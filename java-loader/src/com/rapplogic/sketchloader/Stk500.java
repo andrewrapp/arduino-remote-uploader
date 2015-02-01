@@ -46,7 +46,7 @@ public class Stk500 implements SerialPortEventListener{
 	
 	public int[] process(String file) throws IOException {
 	//	    File hexFile = new File(file);
-		File hexFile = new File("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build7430851793214205667.tmp/Sketcher.cpp.hex");
+		File hexFile = new File("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build7683824537384679721.tmp/HelloTest.cpp.hex");
 	    	
 	        // Look at this doc to work out what we need and don't. Max is about 122kb.
 	        // https://bluegiga.zendesk.com/entries/42713448--REFERENCE-Updating-BLE11x-firmware-using-UART-DFU
@@ -236,24 +236,6 @@ public class Stk500 implements SerialPortEventListener{
 	
 	protected void handleSerial(SerialPortEvent event) {
        switch (event.getEventType()) {
-           case SerialPortEvent.BI:
-               throw new RuntimeException("BI");
-           case SerialPortEvent.OE:
-               throw new RuntimeException("OE");
-           case SerialPortEvent.FE:
-               throw new RuntimeException("FE");
-           case SerialPortEvent.PE:
-               throw new RuntimeException("PE");
-           case SerialPortEvent.CD:
-               throw new RuntimeException("CD");
-           case SerialPortEvent.CTS:
-               throw new RuntimeException("CTS");
-           case SerialPortEvent.DSR:
-               throw new RuntimeException("DSR");
-           case SerialPortEvent.RI:
-               throw new RuntimeException("RI");
-           case SerialPortEvent.OUTPUT_BUFFER_EMPTY:
-               throw new RuntimeException("output buffer is empty");
            case SerialPortEvent.DATA_AVAILABLE:
                // we get here if data has been received
                byte[] readBuffer = new byte[20];
@@ -291,7 +273,7 @@ public class Stk500 implements SerialPortEventListener{
 	}
 	
 	public void write(int i) throws IOException {
-//		System.out.print(Integer.toHexString(i) + ",");
+		System.out.print(Integer.toHexString(i) + ",");
 		serialPort.getOutputStream().write(i);
 	}
 	
@@ -350,12 +332,18 @@ public class Stk500 implements SerialPortEventListener{
 			synchronized (rxNotify) {
 				rxNotify.wait();
 			}
+			
+			if (position == 0) {
+				break;
+			}
 
 			// index to next position
 			position+=length;
 		}
 		
-		System.out.println("Done");
+		System.out.println("Java done");
+		
+		Thread.sleep(60000);
 	}
 	
 	public static void main(String[] args) throws Exception {

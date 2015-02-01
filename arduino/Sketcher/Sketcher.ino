@@ -65,8 +65,8 @@ byte cmd_buffer[1];
 byte buffer[BUFFER_SIZE];
 byte read_buffer[READ_BUFFER_SIZE];
 
-const int ssTx = 4;
-const int ssRx = 5;
+//const int ssTx = 4;
+//const int ssRx = 5;
 const int resetPin = 8;
 
 // structure
@@ -82,7 +82,9 @@ byte high = 0;
 byte low = 0;
 
 void clear_read() {
-  while (getProgrammerSerial()->read() != -1);
+  while (getProgrammerSerial()->read() != -1) {
+    Serial.println("Extra bytes on input buffer!");  
+  }
 }
 
 HardwareSerial* getProgrammerSerial() {
@@ -93,26 +95,40 @@ HardwareSerial* getProgrammerSerial() {
 //  return &Serial;
 //}
 
-byte read_response(byte len, int timeout) {
+int read_response(byte len, int timeout) {
   long start = millis();
   int pos = 0;
   
-  //while (millis() - start < timeout) {
-  //}
+  Serial.print("read_response() expecting reply len: "); Serial.println(len, HEX);
   
-  while (getProgrammerSerial()->available()) {
-    read_buffer[pos] = getProgrammerSerial()->read();
-    pos++;
+  while (millis() - start < timeout) {
+    
+//    Serial.println("waiting for response");
+          
+    if (getProgrammerSerial()->available() > 0) {
+      read_buffer[pos] = getProgrammerSerial()->read();
+      Serial.print("read_response()<-"); Serial.println(read_buffer[pos], HEX);
+
+      pos++;
+      
+      if (pos == len) {
+        // we've read expected len
+        Serial.println("response complete");
+        break;
+      }
+    }
   }
   
   // consume an extra
   clear_read();
   
   if (pos == len) {
+    Serial.print("read_response() success");
     // success
     return pos;
   }
   
+  Serial.print("read_response() fail read "); Serial.print(pos, DEC); Serial.println(" bytes");
   return -1;
 }
 
@@ -135,19 +151,23 @@ void dump_buffer(byte arr[], char context[], byte len) {
 // Send command and buffer and return length of reply
 int send(byte command, byte arr[], byte offset, byte len, byte response_length) {
 
+  Serial.print("send() command "); Serial.println(command, HEX);
   getProgrammerSerial()->write(command);
   
   if (arr != NULL) {
     for (int i = offset; i < offset + len; i++) {
-      // ugh, now need to convert to hex ascii
       getProgrammerSerial()->print(arr[i], HEX);
+      Serial.print("send()->"); Serial.println(arr[i], HEX);
     }
   }
   
   getProgrammerSerial()->print(CRC_EOP, HEX);
+  getProgrammerSerial()->flush();
   
+  Serial.print("send() CRC_EOP "); Serial.println(CRC_EOP, HEX);
+      
   // add 2 bytes since we always expect to get back STK_INSYNC + STK_OK
-  byte reply_len = read_response(response_length + 2, 5000);
+  int reply_len = read_response(response_length + 2, 5000);
 
   if (reply_len == -1) {
     return -1;
@@ -161,7 +181,7 @@ int send(byte command, byte arr[], byte offset, byte len, byte response_length) 
   }
 
   if (read_buffer[0] != STK_INSYNC) {
-    Serial.println("Expected  STK_INSYNC");
+    Serial.print("Expected STK_INSYNC but was"); Serial.println(read_buffer[0], HEX);
     return -1;
   }
   
@@ -184,25 +204,26 @@ int send(byte command, byte arr[], byte offset, byte len, byte response_length) 
 
 void bounce() {    
     // Bounce the reset pin
+    // ported from tomatoless
     Serial.println("Bouncing the Arduino reset pin");
-    
+    delay(500);
     // set reset pin low
     digitalWrite(resetPin, LOW);
-    // 2.5us min
-    delayMicroseconds(5);
+    delay(200);
     digitalWrite(resetPin, HIGH);
+    delay(300);
 }
 
 int check_duino() {
   clear_read();
     
-    byte data_len = 0;
+    int data_len = 0;
     
     // Check everything we can check to ensure we are speaking to the correct boot loader
     cmd_buffer[0] = 0x81;
     data_len = send(STK_GET_PARAMETER, cmd_buffer, 0, 1, 1);
     
-    if (data_len != 1) {
+    if (data_len == -1) {
      return -1;   
     }
     
@@ -211,7 +232,7 @@ int check_duino() {
     cmd_buffer[0] = 0x82;
     data_len = send(STK_GET_PARAMETER, cmd_buffer, 0, 1, 1);
 
-    if (data_len != 1) {
+    if (data_len == -1) {
      return -1;   
     }
 
@@ -220,10 +241,10 @@ int check_duino() {
     cmd_buffer[0] = 0x83;
     data_len = send(STK_GET_PARAMETER, cmd_buffer, 0, 1, 1);
     
-    if (data_len != 1) {
+    if (data_len == -1) {
       return -1;   
     } else if (read_buffer[0] != 0x3) {
-      Serial.print("Expected 0x3 for invalid. instead was "); Serial.println(read_buffer[0]);    
+      Serial.print("Expected 0x3 but instead was "); Serial.println(read_buffer[0]);    
       return -1;
     }
     
@@ -238,7 +259,7 @@ int check_duino() {
     }
 }
 
-byte send_chunk() {    
+int send_chunk() {    
     send(STK_LOAD_ADDRESS, buffer, 1, 2, 0);
     
     byte data_len = len - 3;
@@ -283,7 +304,7 @@ void setup() {
   pinMode(resetPin, OUTPUT);
   
   // configure serial for bootloader baud rate  
-//  Serial1.begin(19200);
+  Serial1.begin(19200);
 }
     
 void reset() {
@@ -305,8 +326,7 @@ void loop() {
     
     if (pos == 0) {
       if (b == 1) {
-        Serial.println("bouncing");
-//        bounce();
+        bounce();
       } else if (b == 2) {
         Serial.println("done");  
       }
@@ -331,7 +351,7 @@ void loop() {
         check_duino();        
 //        dump_buffer(buffer, "Processed chunk from host", len);
         //Serial.println("ok");
-        send_chunk();
+        //send_chunk();
         reset();
       
         continue;        
