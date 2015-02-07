@@ -169,7 +169,7 @@ int read_response(uint8_t len, int timeout) {
     return pos;
   }
   
-  Serial.print("read_response() fail read "); Serial.print(pos, DEC); Serial.print(" bytes but expected "); Serial.print(len, DEC); Serial.println(" bytes");
+  Serial.print("read_response() timeout! read "); Serial.print(pos, DEC); Serial.print(" bytes but expected "); Serial.print(len, DEC); Serial.println(" bytes");
   return -1;
 }
 
@@ -212,7 +212,7 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
       
   // add 2 bytes since we always expect to get back STK_INSYNC + STK_OK
   //int reply_len = read_response(response_length + 2, 5000);
-  int reply_len = read_response(response_length + 2, 5000);
+  int reply_len = read_response(response_length + 2, 15000);
 
   if (reply_len == -1) {
     return -1;
@@ -342,10 +342,6 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     }
     
     Serial.println("STK_READ_PAGE");
-    
-    // now read it back??
-    // response length is always + 2
-    //execute(STK_READ_PAGE, [0x00, data_len, 0x46], data_len)
 
     uint8_t reply_len = send(STK_READ_PAGE, buffer, addr_offset - 1, 3, data_len);
     
@@ -363,12 +359,19 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     
     // TODO we can compute checksum on buffer, reset and use for the read buffer!!!!!!!!!!!!!!!
     
-    for (int i = 0; i < data_len; i++) {
-      if (read_buffer[i] != buffer[i]) {
-        Serial.println("Error: reply buffer does not match write buffer at " + i);
+    Serial.print("reply_len is "); Serial.println(reply_len, DEC);
+        
+    for (int i = 0; i < reply_len; i++) {
+//        Serial.print("read buff is "); Serial.println(read_buffer[i], HEX);
+//        Serial.print("buff is "); Serial.println(buffer[addr_offset + 2 + i], HEX);
+        
+      if (read_buffer[i] != buffer[addr_offset + 2 + i]) {
+        Serial.print("Error: reply buffer does not match write buffer at "); Serial.println(i, DEC);
         return -1;
       }
     } 
+    
+    Serial.println("Read page success");
 }
 
 void setup() {
@@ -385,7 +388,8 @@ void setup() {
 
   // configure serial for bootloader baud rate  
   Serial1.begin(115200);
-  //Serial1.begin(9600);
+  // fail
+//  Serial1.begin(19200);
 }
     
 void reset() {

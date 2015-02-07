@@ -304,7 +304,10 @@ public class Stk500 implements SerialPortEventListener{
 		public Page(int[] program, int offset, int dataLength) {
 			super();
 			// address is simple the offset (array index)
-			this.address = offset;			
+			
+			// tomatoless divides by 2 pline.addr <- addr / 2; // Address space is 16-bit
+			this.address = offset / 2;			
+			
 			int[] data = new int[dataLength];
 			System.arraycopy(program, offset, data, 0, dataLength);
 			this.data = data;
@@ -334,7 +337,7 @@ public class Stk500 implements SerialPortEventListener{
 		}
 	}
 	
-	public List<Page> formatPages(int[] program) {		
+	public List<Page> formatPages(int[] program, int pageSize) {		
 		List<Page> pages = Lists.newArrayList();
 		
 		System.out.println("Program length is " + program.length);
@@ -346,8 +349,8 @@ public class Stk500 implements SerialPortEventListener{
 			
 			int length = 0;
 			
-			if (position + ARDUINO_BLOB_SIZE < program.length) {
-				length = ARDUINO_BLOB_SIZE;
+			if (position + pageSize < program.length) {
+				length = pageSize;
 			} else {
 				length = program.length - position;
 			}
@@ -364,7 +367,8 @@ public class Stk500 implements SerialPortEventListener{
 	public void run() throws Exception {
 		int[] program = process(null);
 		
-		List<Page> pages = formatPages(program);
+//		List<Page> pages = formatPages(program, ARDUINO_BLOB_SIZE);
+		List<Page> pages = formatPages(program, 64);
 		
 		System.out.println("Program length is " + program.length + ", there are " + pages.size() + " pages");
 		
