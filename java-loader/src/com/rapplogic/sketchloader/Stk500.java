@@ -13,10 +13,12 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.TooManyListenersException;
 
+import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 
 public class Stk500 implements SerialPortEventListener{
@@ -203,6 +205,23 @@ public class Stk500 implements SerialPortEventListener{
         throw new RuntimeException("Port not found " + port);
     }
     
+    public String toHex(int[] data, int offset, int length) {
+    	StringBuilder hex = new StringBuilder();
+    	
+    	for (int i = offset; i < offset + length; i++) {
+    		hex.append(Integer.toHexString(data[i]));
+    		if (i != data.length - 1) {
+    			hex.append(",");
+    		}
+    	}
+    	
+    	return hex.toString();    	
+    }
+    
+    public String toHex(int[] data) {
+    	return toHex(data, 0, data.length);
+    }
+    
 	public void open(String serialPortName) throws PortInUseException, IOException, UnsupportedCommOperationException, TooManyListenersException {
 		
 		CommPortIdentifier commPortIdentifier = findPort(serialPortName);
@@ -274,18 +293,53 @@ public class Stk500 implements SerialPortEventListener{
 		System.out.print(Integer.toHexString(i) + ",");
 		serialPort.getOutputStream().write(i);
 	}
+
+	static class Page {
+		private int address;
+//		private List<Integer> data = Lists.newArrayList();
+		private int[] data;
+		// incl. address
+		private int[] page;
+		
+		public Page(int[] program, int offset, int dataLength) {
+			super();
+			// address is simple the offset (array index)
+			this.address = offset;			
+			int[] data = new int[dataLength];
+			System.arraycopy(program, offset, data, 0, dataLength);
+			this.data = data;
+			
+			page = new int[dataLength + 2];
+
+			// addr msb
+			page[0] = (this.address >> 8) & 0xff;
+			// lsb
+			page[1] = this.address & 0xff;
+			
+			// copy data onto stk page
+			System.arraycopy(data, 0, page, 2, data.length);
+		}
+		
+		public int getAddress() {
+			return address;
+		}
+		
+		public int[] getData() {
+			return data;
+		}
+
+		// address high/low + data
+		public int[] getPage() {
+			return page;
+		}
+	}
 	
-	public void run() throws Exception {
-		int[] program = process(null);
+	public List<Page> formatPages(int[] program) {		
+		List<Page> pages = Lists.newArrayList();
 		
 		System.out.println("Program length is " + program.length);
 		
 		int position = 0;
-		
-		this.open("/dev/tty.usbmodemfa131");
-		
-		boolean first = true;
-		boolean last = false;
 		
 		// write the program to the arduino in chunks of ARDUINO_BLOB_SIZE
 		while (position < program.length) {
@@ -296,49 +350,56 @@ public class Stk500 implements SerialPortEventListener{
 				length = ARDUINO_BLOB_SIZE;
 			} else {
 				length = program.length - position;
-				last = true;
 			}
-			
-			
-			// TODO need to send the # of pages, + a checksum of the total bytes in the program
 
+			pages.add(new Page(program, position, length));
 			
-			System.out.println("Sending program chunk of length " + length);
+			// index to next position
+			position+=length;
+		}
+		
+		return pages;
+	}
+	
+	public void run() throws Exception {
+		int[] program = process(null);
+		
+		List<Page> pages = formatPages(program);
+		
+		System.out.println("Program length is " + program.length + ", there are " + pages.size() + " pages");
+		
+		this.open("/dev/tty.usbmodemfa131");
+		
+		for (int i = 0; i < pages.size(); i++) {
+			Page page = pages.get(i);
 			
-			// length is data + ctrl, len, + addres msb/lsb
-			if (first) {
-				write(1);
-				first = false;
+			System.out.println("page address is " + page.getAddress() + ", len is " + page.getData().length + ", page is " + toHex(page.getPage()) + ", data is " + toHex(page.getData()));
+			
+			if (i == 0) {
+				write(0xd);
+			} else if (i == pages.size() - 1) {
+				write(0xf);
 			} else {
-				write(2);				
+				write(0xe);
 			}
-
-			write(length + 4 & 0xff);
-			// send address, which is simply the array position as msb/lsb
-			write((position >> 8) & 0xff);
-			write(position & 0xff);
+		
+//			// packet len = ctrl + len + addr high/low + data
+			write(page.getPage().length + 2);
 			
-			for (int i = position; i < position + length; i++) {
-				write(program[i] & 0xff);
+			for (int k = 0; k < page.getPage().length; k++) {
+				write(page.getPage()[k] & 0xff);	
 			}
 			
 			serialPort.getOutputStream().flush();
-
-			System.out.println("");
-			System.out.println("Sent program from " + position + " to " + (position + length) + " out of " + program.length);
-//			System.out.println("Waiting for reply");
 			
-			// wait for reply
+//			// wait for reply
 			synchronized (rxNotify) {
 				rxNotify.wait();
 			}
 			
-			if (position == 0) {
+			if (i == 0) {
 				break;
 			}
-
-			// index to next position
-			position+=length;
 		}
 		
 		System.out.println("Java done");
@@ -347,7 +408,6 @@ public class Stk500 implements SerialPortEventListener{
 	}
 	
 	public static void main(String[] args) throws Exception {
-//		new Stk500().process(args[0]);
 		new Stk500().run();
 	}
 }

@@ -142,7 +142,7 @@ int read_response(uint8_t len, int timeout) {
   long start = millis();
   int pos = 0;
   
-  Serial.print("read_response() expecting reply len: "); Serial.println(len, HEX);
+  Serial.print("read_response() expecting reply len: "); Serial.println(len, DEC);
   
   while (millis() - start < timeout) {
     
@@ -169,7 +169,7 @@ int read_response(uint8_t len, int timeout) {
     return pos;
   }
   
-  Serial.print("read_response() fail read "); Serial.print(pos, DEC); Serial.println(" bytes");
+  Serial.print("read_response() fail read "); Serial.print(pos, DEC); Serial.print(" bytes but expected "); Serial.print(len, DEC); Serial.println(" bytes");
   return -1;
 }
 
@@ -192,13 +192,16 @@ void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
 // Send command and buffer and return length of reply
 int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t response_length) {
 
-//  Serial.print("send() command "); Serial.println(command, HEX);
-  getProgrammerSerial()->write((char) command);
+    Serial.print("send() command "); Serial.println(command, HEX);
+    Serial.print("send() expect resp len "); Serial.println(response_length, DEC);
+        
+    getProgrammerSerial()->write((char) command);
+
   
   if (arr != NULL) {
     for (int i = offset; i < offset + len; i++) {
-      getProgrammerSerial()->write((char) arr[i]);
-//      Serial.print("send()->"); Serial.println(arr[i], HEX);
+      getProgrammerSerial()->write((char) arr[i]);        
+      Serial.print("send()->"); Serial.println(arr[i], HEX);
     }
   }
   
@@ -311,23 +314,45 @@ int check_duino() {
     return 0;
 }
 
-int send_chunk() {    
-    send(STK_LOAD_ADDRESS, buffer, 1, 2, 0);
+int send_page(uint8_t addr_offset, uint8_t data_len) {    
+    // ctrl,len,addr high/low
+    // address is byte index 2,3
     
-    uint8_t data_len = len - 3;
+    Serial.println("STK_LOAD_ADDRESS");
     
-    // now overwrite addr to reuse buffer
-    buffer[0] = 0;
-    buffer[1] = data_len;
-    buffer[2] = 0x46;
+    if (send(STK_LOAD_ADDRESS, buffer, addr_offset, 2, 0) == -1) {
+      Serial.println("load addr failed");
+      return -1;
+    }
+        
+    // rewrite buffer to make things easier
+    // data starts at addr_offset + 2
+    // format of prog_page is 0x00, data_len, 0x46, data
+    buffer[addr_offset - 1] = 0;
+    buffer[addr_offset] = data_len;
+    buffer[addr_offset + 1] = 0x46;
     //remaining buffer is data
     
-    // send page
-    send(STK_PROG_PAGE, buffer, 0, len, 0);
+    Serial.println("STK_PROG_PAGE");
+    
+    // send page. len data + command bytes
+    if (send(STK_PROG_PAGE, buffer, addr_offset - 1, data_len + 3, 0) == -1) {
+      Serial.println("page page failed");
+      return -1;       
+    }
+    
+    Serial.println("STK_READ_PAGE");
     
     // now read it back??
     // response length is always + 2
-    uint8_t reply_len = send(STK_READ_PAGE, buffer, 0, len, data_len);
+    //execute(STK_READ_PAGE, [0x00, data_len, 0x46], data_len)
+
+    uint8_t reply_len = send(STK_READ_PAGE, buffer, addr_offset - 1, 3, data_len);
+    
+    if (reply_len == -1) {
+      Serial.println("Read page failure");
+      return -1;
+    }
     
     if (reply_len != data_len) {
       Serial.println("Error: read len does not match data len");
@@ -369,56 +394,64 @@ void reset() {
 }
 
 long last = 0;
-
-  int count = 0;
+int count = 0;
   
 void loop() {
   
   int b = 0;
 
-  
   // each page is ctrl,len,high,low,data
-  
+
   while (Serial.available() > 0) {
     b = Serial.read();
     
     if (pos == 0) {
+      buffer[pos] = b;
+            
       if (b == 1) {
-//        clear_read();
-        //bounce();        
-        //check_duino();      
-             
-        //dump_buffer(buffer, "Processed chunk from host", len);        
+        
       } else if (b == 2) {
         Serial.println("done");  
       }
     } else if (pos == 1) {
-      Serial.print("Len is "); Serial.println(b, HEX);
+      // len
       buffer[pos] = b;
       len = b;      
     } else if (pos == 2) {
+      // addr high
       buffer[pos] = b;
       //Serial.print("addr high uint8_t is "); Serial.println(uint8_t, HEX);
     } else if (pos == 3) {
+      // addr low
       buffer[pos] = b;
       //Serial.print("addr low uint8_t is "); Serial.println(uint8_t, HEX);      
     } else if (pos < len) {
       // data
       buffer[pos] = b;
-      //Serial.print("k pos "); Serial.print(pos); Serial.print(" "); Serial.println(b, HEX);
-      //Serial.print("data is "); Serial.print(uint8_t, HEX); Serial.print(", pos is ");  Serial.print(pos); Serial.print(", len is "); Serial.println(len);
       
       if (pos == len - 1) {
-        // last uint8_t in packet
-        // we have a page at this point
+        
+        if (buffer[0] == 0xd) {
+          // first packet
+          // last uint8_t in packet
+          // we have a page at this point
+
+          
+          // TODO only bounce once!!!!
+          bounce();
+          
+          if (check_duino() != 0) {
+            Serial.println("Check failed!"); 
+            reset();
+            continue;
+          }        
+        }
+
         Serial.println("ok");
         
-        // TODO only bounce once!!!!
-        bounce();
+        dump_buffer(buffer, "prog_page", len);
         
-        if (check_duino() != 0) {
-          Serial.println("Check failed!"); 
-        }
+        send_page(2, len - 4); 
 
         reset();      
         continue;        
