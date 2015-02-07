@@ -46,7 +46,7 @@ public class Stk500 implements SerialPortEventListener{
 	
 	public int[] process(String file) throws IOException {
 	//	    File hexFile = new File(file);
-		File hexFile = new File("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build7683824537384679721.tmp/HelloTest.cpp.hex");
+		File hexFile = new File("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build6061669684703757217.tmp/HelloTest.cpp.hex");
 	    	
 	        // Look at this doc to work out what we need and don't. Max is about 122kb.
 	        // https://bluegiga.zendesk.com/entries/42713448--REFERENCE-Updating-BLE11x-firmware-using-UART-DFU
@@ -242,28 +242,26 @@ public class Stk500 implements SerialPortEventListener{
                
                try {
                    // read data
-                   while (inputStream.available() > 0) {
-                       int numBytes = inputStream.read(readBuffer);
-
-                       for (int i = 0; i < numBytes; i++) {
-//                    	   System.out.println("read " + (char) readBuffer[i]);
-                    	   
-                           if ((readBuffer[i] != 10 && readBuffer[i] != 13)) {
-                               strBuf.append((char) readBuffer[i]);                            
-                           }
-                           
-                           // carriage return
-                           if ((int)readBuffer[i] == 10) {         
-                               System.out.println("Arduino out: " + strBuf.toString());
-                               
-	                   			synchronized (rxNotify) {
-	                				rxNotify.notify();
-	                			}
-	                   			
-                               strBuf = new StringBuffer();
-                           }
-                       }
-                   }
+            	   int numBytes = inputStream.read(readBuffer);
+            	   
+            	   for (int i = 0; i < numBytes; i++) {
+            		   //System.out.println("read " + (char) readBuffer[i]);
+ 
+            		   if ((readBuffer[i] != 10 && readBuffer[i] != 13)) {
+            			   strBuf.append((char) readBuffer[i]);                            
+            		   }
+  
+            		   //carriage return
+            		   if ((int)readBuffer[i] == 10) {         
+            			   System.out.println("Arduino out: " + strBuf.toString());
+          
+            			   synchronized (rxNotify) {
+            				   rxNotify.notify();
+            			   }
+                          
+            			   strBuf = new StringBuffer();
+            		   }
+            	   }
                } catch (Exception e) {
                    throw new RuntimeException("serialEvent error ", e);
                }
@@ -284,8 +282,6 @@ public class Stk500 implements SerialPortEventListener{
 		
 		int position = 0;
 		
-//		if (true) return;
-		
 		this.open("/dev/tty.usbmodemfa131");
 		
 		boolean first = true;
@@ -302,6 +298,10 @@ public class Stk500 implements SerialPortEventListener{
 				length = program.length - position;
 				last = true;
 			}
+			
+			
+			// TODO need to send the # of pages, + a checksum of the total bytes in the program
+
 			
 			System.out.println("Sending program chunk of length " + length);
 			

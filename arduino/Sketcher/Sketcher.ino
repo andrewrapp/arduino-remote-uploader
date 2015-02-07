@@ -1,42 +1,40 @@
 
 
+// arduino isp failed with "Yikes!  Invalid device signature." Try getting pocket avr (usbtiny) to burn bootloader
+// put optiboot on decimila with RBBB as programmer. see what that does. try latest 168 bootloader
+
+// another idea: use optiloader to burn bootloader, or use modify optiloader to write sketch w/o a bootloader
+
+// moteino/dual optiboot seems to take the approach of using an external flash to write the program, then the bootloader reads from ext. flash an updates program https://github.com/LowPowerLab/DualOptiboot
+// uses eeprom (soic package) http://www.digikey.com/product-detail/en/W25X40CLSNIG/W25X40CLSNIG-ND/3008652
+
 /*
 - Power decimila via external power to free serial?
 - usb serial issue drops bytes around position 90. 128 seems to be the page size 
 - Try optiboot if no success with origin bootloader
 - look at other bootloaders
 
+// boards.txt, baud rate, bootloader and more various boards
+// /Applications/Arduino.app//Contents/Resources/Java/hardware/arduino/boards.txt
 
 
-Nordic
-not full duplex, should be ok
-limited range. can buy with external antenna for ~6
-power low
-packets up to 25 bytes
-cheap!! ~$3
-spi interface
-3.3V (5v tolerant?)
-Arduino library
 
-Wifi ESP8266
-power hungry - should work ok with arduino power
-inconvenient pin out.. need adapter
-requires serial port with default baud rate
-must be able to change baud rate to use with softserial
-wifi, so doesn’t require tx/rx pair!
-cheap ~$3
-seems to require wifi pass in the sketch, ugh
-AT commands
-Instructable for setting 9600 br http://www.instructables.com/id/ESP8266-Wifi-Temperature-Logger/
+// UGH, TRY ONE OF THE ARDUINO PROS, or RBBB (could it be the atmega 128?)
+
+bootloader getch returns unit8_t. casts uint8_t to char before assigning to register
+
+0x41, 0x81, 0x20
+
+// 9600 results in 48,65,6C
+// 19200 results in 80,98,66 (hex)
+// 115200 results in 0,0,0
 
 
-XBee
-works well
-not cheap
-low power
 
 impeeduino https://github.com/electricimp/reference/tree/master/hardware/impeeduino
 socat virtual comm to socket http://stackoverflow.com/questions/22624653/create-a-virtual-serial-port-connection-over-tcp
+optiloader (bootloader in sketch) https://github.com/WestfW/OptiLoader/blob/master/optiLoader.pde
+adafruit optiloader https://github.com/adafruit/Standalone-Arduino-AVR-ISP-programmer
 bootloader tips http://stackoverflow.com/questions/3652233/arduino-bootloader
 sparkfun imp https://learn.sparkfun.com/tutorials/wireless-arduino-programming-with-electric-imp
 intel hex http://en.wikipedia.org/wiki/Intel_HEX
@@ -52,50 +50,95 @@ http://forum.arduino.cc/index.php?topic=117299.0;nowap
 #define BUFFER_SIZE 150
 #define READ_BUFFER_SIZE 150
 
-#define CRC_EOP 0x20
-#define STK_LOAD_ADDRESS 0x55
-#define STK_PROG_PAGE 0x64
-#define STK_READ_PAGE 0x74
-#define STK_GET_PARAMETER 0x41
-#define STK_READ_SIGN 0x75
-#define STK_OK 0x10
-#define STK_INSYNC 0x14
 
-byte cmd_buffer[1];
-byte buffer[BUFFER_SIZE];
-byte read_buffer[READ_BUFFER_SIZE];
+#define STK_OK              0x10
+#define STK_FAILED          0x11  // Not used
+#define STK_UNKNOWN         0x12  // Not used
+#define STK_NODEVICE        0x13  // Not used
+#define STK_INSYNC          0x14  // ' '
+#define STK_NOSYNC          0x15  // Not used
+#define ADC_CHANNEL_ERROR   0x16  // Not used
+#define ADC_MEASURE_OK      0x17  // Not used
+#define PWM_CHANNEL_ERROR   0x18  // Not used
+#define PWM_ADJUST_OK       0x19  // Not used
+#define CRC_EOP             0x20  // 'SPACE'
+#define STK_GET_SYNC        0x30  // '0'
+#define STK_GET_SIGN_ON     0x31  // '1'
+#define STK_SET_PARAMETER   0x40  // '@'
+#define STK_GET_PARAMETER   0x41  // 'A'
+#define STK_SET_DEVICE      0x42  // 'B'
+#define STK_SET_DEVICE_EXT  0x45  // 'E'
+#define STK_ENTER_PROGMODE  0x50  // 'P'
+#define STK_LEAVE_PROGMODE  0x51  // 'Q'
+#define STK_CHIP_ERASE      0x52  // 'R'
+#define STK_CHECK_AUTOINC   0x53  // 'S'
+#define STK_LOAD_ADDRESS    0x55  // 'U'
+#define STK_UNIVERSAL       0x56  // 'V'
+#define STK_PROG_FLASH      0x60  // '`'
+#define STK_PROG_DATA       0x61  // 'a'
+#define STK_PROG_FUSE       0x62  // 'b'
+#define STK_PROG_LOCK       0x63  // 'c'
+#define STK_PROG_PAGE       0x64  // 'd'
+#define STK_PROG_FUSE_EXT   0x65  // 'e'
+#define STK_READ_FLASH      0x70  // 'p'
+#define STK_READ_DATA       0x71  // 'q'
+#define STK_READ_FUSE       0x72  // 'r'
+#define STK_READ_LOCK       0x73  // 's'
+#define STK_READ_PAGE       0x74  // 't'
+#define STK_READ_SIGN       0x75  // 'u'
+#define STK_READ_OSCCAL     0x76  // 'v'
+#define STK_READ_FUSE_EXT   0x77  // 'w'
+#define STK_READ_OSCCAL_EXT 0x78  // 'x'
 
+uint8_t cmd_buffer[1];
+uint8_t buffer[BUFFER_SIZE];
+uint8_t read_buffer[READ_BUFFER_SIZE];
+
+
+
+// wiring:
 //const int ssTx = 4;
 //const int ssRx = 5;
 const int resetPin = 8;
+// common ground
+// 5V leonardo -> 5V diecimila
+
+// leanardo boss (connected to usb)
+// diecimila with optiboot is target
 
 // structure
 // data_len = len - 3
 // len,addr high, addr low,data
 
-// TODO start byte + escaping and checksum
+// TODO start uint8_t + escaping and checksum
 
-byte len = 0;
-byte data_len = 0;
-byte pos = 0;
-byte high = 0;
-byte low = 0;
-
-void clear_read() {
-  while (getProgrammerSerial()->read() != -1) {
-    Serial.println("Extra bytes on input buffer!");  
-  }
-}
+uint8_t len = 0;
+uint8_t data_len = 0;
+uint8_t pos = 0;
+uint8_t high = 0;
+uint8_t low = 0;
 
 HardwareSerial* getProgrammerSerial() {
   return &Serial1;
+}
+
+void clear_read() {
+  int count = 0;
+  while (getProgrammerSerial()->available() > 0) {
+    getProgrammerSerial()->read();
+    count++;
+  }
+  
+  if (count > 0) {
+    Serial.print("Discarded "); Serial.print(count, DEC); Serial.println(" extra bytes");
+  }
 }
 
 //HardwareSerial* getDebugSerial() {
 //  return &Serial;
 //}
 
-int read_response(byte len, int timeout) {
+int read_response(uint8_t len, int timeout) {
   long start = millis();
   int pos = 0;
   
@@ -119,12 +162,10 @@ int read_response(byte len, int timeout) {
     }
   }
   
-  // consume an extra
+  // consume any extra
   clear_read();
   
   if (pos == len) {
-    Serial.print("read_response() success");
-    // success
     return pos;
   }
   
@@ -132,7 +173,7 @@ int read_response(byte len, int timeout) {
   return -1;
 }
 
-void dump_buffer(byte arr[], char context[], byte len) {
+void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
   Serial.print(context);
   Serial.print(": ");
   
@@ -149,24 +190,25 @@ void dump_buffer(byte arr[], char context[], byte len) {
 }
 
 // Send command and buffer and return length of reply
-int send(byte command, byte arr[], byte offset, byte len, byte response_length) {
+int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t response_length) {
 
-  Serial.print("send() command "); Serial.println(command, HEX);
-  getProgrammerSerial()->write(command);
+//  Serial.print("send() command "); Serial.println(command, HEX);
+  getProgrammerSerial()->write((char) command);
   
   if (arr != NULL) {
     for (int i = offset; i < offset + len; i++) {
-      getProgrammerSerial()->print(arr[i], HEX);
-      Serial.print("send()->"); Serial.println(arr[i], HEX);
+      getProgrammerSerial()->write((char) arr[i]);
+//      Serial.print("send()->"); Serial.println(arr[i], HEX);
     }
   }
   
-  getProgrammerSerial()->print(CRC_EOP, HEX);
-  getProgrammerSerial()->flush();
+  getProgrammerSerial()->write((char) CRC_EOP);
+//  getProgrammerSerial()->flush();
   
-  Serial.print("send() CRC_EOP "); Serial.println(CRC_EOP, HEX);
+//  Serial.print("send() CRC_EOP "); Serial.println(CRC_EOP, HEX);
       
   // add 2 bytes since we always expect to get back STK_INSYNC + STK_OK
+  //int reply_len = read_response(response_length + 2, 5000);
   int reply_len = read_response(response_length + 2, 5000);
 
   if (reply_len == -1) {
@@ -181,22 +223,24 @@ int send(byte command, byte arr[], byte offset, byte len, byte response_length) 
   }
 
   if (read_buffer[0] != STK_INSYNC) {
-    Serial.print("Expected STK_INSYNC but was"); Serial.println(read_buffer[0], HEX);
+    Serial.print("Expected STK_INSYNC but was "); Serial.println(read_buffer[0], HEX);
     return -1;
   }
   
   if (read_buffer[reply_len - 1] != STK_OK) {
-    Serial.println("Expected STK_OK");
+    Serial.print("Expected STK_OK but was "); Serial.println(read_buffer[reply_len - 1], HEX);
     return -1;    
   }
   
-  // rewrite buffer without default 2 bytes
-  
-  byte data_reply = reply_len - 2;
+  // rewrite buffer without the STK_INSYNC and STK_OK
+  uint8_t data_reply = reply_len - 2;
   
   for (int i = 0; i < data_reply; i++) {
-    read_buffer[i] = read_buffer[i+2];
+    read_buffer[i] = read_buffer[i+1];
   }
+  
+  // zero the ok
+  read_buffer[reply_len - 1] = 0;
   
   // return the data portion of the length
   return data_reply;
@@ -206,12 +250,13 @@ void bounce() {
     // Bounce the reset pin
     // ported from tomatoless
     Serial.println("Bouncing the Arduino reset pin");
-    delay(500);
+//    delay(500);
     // set reset pin low
     digitalWrite(resetPin, LOW);
     delay(200);
     digitalWrite(resetPin, HIGH);
     delay(300);
+    //delay(10);
 }
 
 int check_duino() {
@@ -227,7 +272,7 @@ int check_duino() {
      return -1;   
     }
     
-    Serial.print("Major is"); Serial.println(read_buffer[0]);
+    Serial.print("Major is "); Serial.println(read_buffer[0], HEX);
     
     cmd_buffer[0] = 0x82;
     data_len = send(STK_GET_PARAMETER, cmd_buffer, 0, 1, 1);
@@ -236,33 +281,40 @@ int check_duino() {
      return -1;   
     }
 
-    Serial.print("Minor is"); Serial.println(read_buffer[0]);    
+    Serial.print("Minor is "); Serial.println(read_buffer[0], HEX);    
     
+    // this not a valid command. optiboot will send back 0x3 for anything it doesn't understand
     cmd_buffer[0] = 0x83;
     data_len = send(STK_GET_PARAMETER, cmd_buffer, 0, 1, 1);
     
     if (data_len == -1) {
       return -1;   
     } else if (read_buffer[0] != 0x3) {
-      Serial.print("Expected 0x3 but instead was "); Serial.println(read_buffer[0]);    
+      Serial.print("Expected 0x3 but was "); Serial.println(read_buffer[0]);    
       return -1;
     }
-    
+
     // weird tomatoless has 0 response bytes
-    send(STK_READ_SIGN, NULL, 0, 0, 3);
+    data_len = send(STK_READ_SIGN, NULL, 0, 0, 3);
     
-    if (data_len != 3) {
+    if (data_len != 3) {      
       return -1;      
-    } else if (read_buffer[0] != 0x1E && read_buffer[1] != 0x95 && read_buffer[2] != 0x0F) {
-      Serial.print("Signature invalid");
+      // tomatoless expects a different signature than what I get from optiboot so this might not be effective verification
+      // assert(signature.len() == 3 && signature[0] == 0x1E && signature[1] == 0x95 && signature[2] == 0x0F);
+    } else if (read_buffer[0] != 0x1E && read_buffer[1] != 0x94 && read_buffer[2] != 0x6) {
+      Serial.println("Signature invalid");
       return -1;
     }
+    
+    Serial.println("Check success!");
+    
+    return 0;
 }
 
 int send_chunk() {    
     send(STK_LOAD_ADDRESS, buffer, 1, 2, 0);
     
-    byte data_len = len - 3;
+    uint8_t data_len = len - 3;
     
     // now overwrite addr to reuse buffer
     buffer[0] = 0;
@@ -275,7 +327,7 @@ int send_chunk() {
     
     // now read it back??
     // response length is always + 2
-    byte reply_len = send(STK_READ_PAGE, buffer, 0, len, data_len);
+    uint8_t reply_len = send(STK_READ_PAGE, buffer, 0, len, data_len);
     
     if (reply_len != data_len) {
       Serial.println("Error: read len does not match data len");
@@ -299,12 +351,16 @@ void setup() {
   // leonardo wait for serial
   while (!Serial);
 
-  Serial.println("Waiting for sketch");
+  //Serial.println("Waiting for sketch");
   
   pinMode(resetPin, OUTPUT);
   
+  //diecimilao.upload.maximum_size=15872
+  //diecimilao.upload.speed=115200
+
   // configure serial for bootloader baud rate  
-  Serial1.begin(19200);
+  Serial1.begin(115200);
+  //Serial1.begin(9600);
 }
     
 void reset() {
@@ -314,19 +370,25 @@ void reset() {
 
 long last = 0;
 
+  int count = 0;
+  
 void loop() {
   
   int b = 0;
+
   
-  // each program is ctrl,len,high,low,data
-  // how do we know when we get the last packet? we dont!
+  // each page is ctrl,len,high,low,data
   
   while (Serial.available() > 0) {
     b = Serial.read();
     
     if (pos == 0) {
       if (b == 1) {
-        bounce();
+//        clear_read();
+        //bounce();        
+        //check_duino();      
+             
+        //dump_buffer(buffer, "Processed chunk from host", len);        
       } else if (b == 2) {
         Serial.println("done");  
       }
@@ -336,24 +398,29 @@ void loop() {
       len = b;      
     } else if (pos == 2) {
       buffer[pos] = b;
-      //Serial.print("addr high byte is "); Serial.println(byte, HEX);
+      //Serial.print("addr high uint8_t is "); Serial.println(uint8_t, HEX);
     } else if (pos == 3) {
       buffer[pos] = b;
-      //Serial.print("addr low byte is "); Serial.println(byte, HEX);      
+      //Serial.print("addr low uint8_t is "); Serial.println(uint8_t, HEX);      
     } else if (pos < len) {
       // data
       buffer[pos] = b;
       //Serial.print("k pos "); Serial.print(pos); Serial.print(" "); Serial.println(b, HEX);
-      //Serial.print("data is "); Serial.print(byte, HEX); Serial.print(", pos is ");  Serial.print(pos); Serial.print(", len is "); Serial.println(len);
+      //Serial.print("data is "); Serial.print(uint8_t, HEX); Serial.print(", pos is ");  Serial.print(pos); Serial.print(", len is "); Serial.println(len);
       
       if (pos == len - 1) {
-        // last byte in packet
-        check_duino();        
-//        dump_buffer(buffer, "Processed chunk from host", len);
-        //Serial.println("ok");
-        //send_chunk();
-        reset();
-      
+        // last uint8_t in packet
+        // we have a page at this point
+        Serial.println("ok");
+        
+        // TODO only bounce once!!!!
+        bounce();
+        
+        if (check_duino() != 0) {
+          Serial.println("Check failed!"); 
+        }
+
+        reset();      
         continue;        
       }
     }
@@ -366,8 +433,17 @@ void loop() {
     }
   }
   
+  
+  if (Serial1.available() > 0) {
+    uint8_t ch = Serial1.read();
+    Serial.print("Got @"); Serial.print(count, DEC); Serial.print(" "); Serial.println(ch, HEX);
+    count++;
+  }
+    
+    
+          
   if (millis() - last > 1000) {
-    Serial.println("No serial available");
+//    Serial.println("No serial available");
     last = millis();
   }
   

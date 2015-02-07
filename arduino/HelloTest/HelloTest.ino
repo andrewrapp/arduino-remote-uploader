@@ -9,6 +9,6 @@ void loop() {
     // echo back
     //Serial.write(b);
   } 
-  Serial.println("Still here. 3333");
+//  Serial.println("Hi 8:45");
   delay(1000);
 }
