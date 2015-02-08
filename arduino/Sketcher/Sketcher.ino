@@ -95,6 +95,7 @@ uint8_t buffer[BUFFER_SIZE];
 uint8_t read_buffer[READ_BUFFER_SIZE];
 
 
+#define VERBOSE false
 
 // wiring:
 //const int ssTx = 4;
@@ -142,21 +143,25 @@ int read_response(uint8_t len, int timeout) {
   long start = millis();
   int pos = 0;
   
-  Serial.print("read_response() expecting reply len: "); Serial.println(len, DEC);
-  
+  if (VERBOSE) {
+    Serial.print("read_response() expecting reply len: "); Serial.println(len, DEC);    
+  }
+
   while (millis() - start < timeout) {
     
 //    Serial.println("waiting for response");
           
     if (getProgrammerSerial()->available() > 0) {
       read_buffer[pos] = getProgrammerSerial()->read();
-      Serial.print("read_response()<-"); Serial.println(read_buffer[pos], HEX);
+      
+      if (VERBOSE) {
+        Serial.print("read_response()<-"); Serial.println(read_buffer[pos], HEX);        
+      }
 
       pos++;
       
       if (pos == len) {
         // we've read expected len
-        Serial.println("response complete");
         break;
       }
     }
@@ -192,23 +197,26 @@ void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
 // Send command and buffer and return length of reply
 int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t response_length) {
 
-    Serial.print("send() command "); Serial.println(command, HEX);
-    Serial.print("send() expect resp len "); Serial.println(response_length, DEC);
-        
+    if (VERBOSE) {
+      Serial.print("send() command "); Serial.println(command, HEX);
+      Serial.print("send() expect resp len "); Serial.println(response_length, DEC);
+    }
+    
     getProgrammerSerial()->write((char) command);
 
   
   if (arr != NULL) {
     for (int i = offset; i < offset + len; i++) {
-      getProgrammerSerial()->write((char) arr[i]);        
-      Serial.print("send()->"); Serial.println(arr[i], HEX);
+      getProgrammerSerial()->write((char) arr[i]);
+
+      if (VERBOSE) {
+        Serial.print("send()->"); Serial.println(arr[i], HEX);  
+      }      
     }
   }
   
   getProgrammerSerial()->write((char) CRC_EOP);
 //  getProgrammerSerial()->flush();
-  
-//  Serial.print("send() CRC_EOP "); Serial.println(CRC_EOP, HEX);
       
   // add 2 bytes since we always expect to get back STK_INSYNC + STK_OK
   //int reply_len = read_response(response_length + 2, 5000);
@@ -218,7 +226,9 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
     return -1;
   }
   
-  dump_buffer(read_buffer, "send_reply", reply_len);
+  if (VERBOSE) {
+    dump_buffer(read_buffer, "send_reply", reply_len);    
+  }
 
   if (reply_len < 2) {
     Serial.println("Invalid response");
@@ -309,16 +319,12 @@ int check_duino() {
       return -1;
     }
     
-    Serial.println("Check success!");
-    
     return 0;
 }
 
 int send_page(uint8_t addr_offset, uint8_t data_len) {    
     // ctrl,len,addr high/low
     // address is byte index 2,3
-    
-    Serial.println("STK_LOAD_ADDRESS");
     
     if (send(STK_LOAD_ADDRESS, buffer, addr_offset, 2, 0) == -1) {
       Serial.println("load addr failed");
@@ -333,15 +339,11 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     buffer[addr_offset + 1] = 0x46;
     //remaining buffer is data
     
-    Serial.println("STK_PROG_PAGE");
-    
     // send page. len data + command bytes
     if (send(STK_PROG_PAGE, buffer, addr_offset - 1, data_len + 3, 0) == -1) {
       Serial.println("page page failed");
       return -1;       
     }
-    
-    Serial.println("STK_READ_PAGE");
 
     uint8_t reply_len = send(STK_READ_PAGE, buffer, addr_offset - 1, 3, data_len);
     
@@ -359,19 +361,21 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     
     // TODO we can compute checksum on buffer, reset and use for the read buffer!!!!!!!!!!!!!!!
     
-    Serial.print("reply_len is "); Serial.println(reply_len, DEC);
-        
-    for (int i = 0; i < reply_len; i++) {
-//        Serial.print("read buff is "); Serial.println(read_buffer[i], HEX);
-//        Serial.print("buff is "); Serial.println(buffer[addr_offset + 2 + i], HEX);
-        
+    if (VERBOSE) {
+      Serial.print("reply_len is "); Serial.println(reply_len, DEC);      
+    }
+      
+    for (int i = 0; i < reply_len; i++) {        
       if (read_buffer[i] != buffer[addr_offset + 2 + i]) {
         Serial.print("Error: reply buffer does not match write buffer at "); Serial.println(i, DEC);
         return -1;
       }
     } 
     
-    Serial.println("Read page success");
+    if (VERBOSE) {
+      Serial.println("Read page verified");      
+    }
+
 }
 
 void setup() {
@@ -450,12 +454,14 @@ void loop() {
             continue;
           }        
         }
-
-        Serial.println("ok");
         
-        dump_buffer(buffer, "prog_page", len);
-        
+        if (VERBOSE) {
+          dump_buffer(buffer, "prog_page", len);        
+        }
+      
         send_page(2, len - 4); 
+        
+        Serial.println("ok");        
 
         reset();      
         continue;        

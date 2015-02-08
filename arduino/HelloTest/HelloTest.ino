@@ -4,11 +4,6 @@ void setup() {
 }
 
 void loop() {
-  while (Serial.available()) {
-    //uint8_t b = Serial.read();
-    // echo back
-    //Serial.write(b);
-  } 
-//  Serial.println("Hi 8:45");
+  Serial.println("Hi 11:15");
   delay(1000);
 }

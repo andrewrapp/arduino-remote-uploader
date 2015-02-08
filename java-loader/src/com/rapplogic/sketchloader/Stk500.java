@@ -25,7 +25,6 @@ public class Stk500 implements SerialPortEventListener{
 
 	private InputStream inputStream;
 	private SerialPort serialPort;
-	private FileWriter fileWriter = null;	
 	final String CR = System.getProperty("line.separator");
 	final static String port = "/dev/tty.usbmodemfd121";
     private StringBuffer strBuf = new StringBuffer();
@@ -48,7 +47,10 @@ public class Stk500 implements SerialPortEventListener{
 	
 	public int[] process(String file) throws IOException {
 	//	    File hexFile = new File(file);
-		File hexFile = new File("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build6061669684703757217.tmp/HelloTest.cpp.hex");
+		
+		 
+//		File hexFile = new File("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build6764070264950839846.tmp/HelloTest.cpp.hex");
+		File hexFile = new File("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build6764070264950839846.tmp/HelloTest.cpp.hex");
 	    	
 	        // Look at this doc to work out what we need and don't. Max is about 122kb.
 	        // https://bluegiga.zendesk.com/entries/42713448--REFERENCE-Updating-BLE11x-firmware-using-UART-DFU
@@ -274,10 +276,12 @@ public class Stk500 implements SerialPortEventListener{
             		   if ((int)readBuffer[i] == 10) {         
             			   System.out.println("Arduino out: " + strBuf.toString());
           
-            			   synchronized (rxNotify) {
-            				   rxNotify.notify();
+            			   if (strBuf.toString().equals("ok")) {
+                			   synchronized (rxNotify) {
+                				   rxNotify.notify();
+                			   }            				   
             			   }
-                          
+
             			   strBuf = new StringBuffer();
             		   }
             	   }
@@ -306,7 +310,8 @@ public class Stk500 implements SerialPortEventListener{
 			// address is simple the offset (array index)
 			
 			// tomatoless divides by 2 pline.addr <- addr / 2; // Address space is 16-bit
-			this.address = offset / 2;			
+			//this.address = offset / 2;
+			this.address = offset;
 			
 			int[] data = new int[dataLength];
 			System.arraycopy(program, offset, data, 0, dataLength);
@@ -377,7 +382,7 @@ public class Stk500 implements SerialPortEventListener{
 		for (int i = 0; i < pages.size(); i++) {
 			Page page = pages.get(i);
 			
-			System.out.println("page address is " + page.getAddress() + ", len is " + page.getData().length + ", page is " + toHex(page.getPage()) + ", data is " + toHex(page.getData()));
+			System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", address is " + page.getAddress() + ", len is " + page.getData().length + ", page is " + toHex(page.getPage()) + ", data is " + toHex(page.getData()));
 			
 			if (i == 0) {
 				write(0xd);
@@ -396,14 +401,15 @@ public class Stk500 implements SerialPortEventListener{
 			
 			serialPort.getOutputStream().flush();
 			
+			System.out.println("\nwaiting for ok");
 //			// wait for reply
 			synchronized (rxNotify) {
 				rxNotify.wait();
 			}
 			
-			if (i == 0) {
-				break;
-			}
+//			if (i == 0) {
+//				break;
+//			}
 		}
 		
 		System.out.println("Java done");
