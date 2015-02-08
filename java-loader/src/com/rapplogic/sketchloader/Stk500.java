@@ -48,8 +48,6 @@ public class Stk500 implements SerialPortEventListener{
 	public int[] process(String file) throws IOException {
 	//	    File hexFile = new File(file);
 		
-		 
-//		File hexFile = new File("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build6764070264950839846.tmp/HelloTest.cpp.hex");
 		File hexFile = new File("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build6764070264950839846.tmp/HelloTest.cpp.hex");
 	    	
 	        // Look at this doc to work out what we need and don't. Max is about 122kb.
@@ -310,8 +308,8 @@ public class Stk500 implements SerialPortEventListener{
 			// address is simple the offset (array index)
 			
 			// tomatoless divides by 2 pline.addr <- addr / 2; // Address space is 16-bit
-			//this.address = offset / 2;
-			this.address = offset;
+			this.address = offset / 2;
+			//this.address = offset;
 			
 			int[] data = new int[dataLength];
 			System.arraycopy(program, offset, data, 0, dataLength);
@@ -319,10 +317,15 @@ public class Stk500 implements SerialPortEventListener{
 			
 			page = new int[dataLength + 2];
 
+			// little endian according to avrdude
+			page[0] = this.address & 0xff;
+			// msb
+			page[1] = (this.address >> 8) & 0xff;
+			
 			// addr msb
-			page[0] = (this.address >> 8) & 0xff;
-			// lsb
-			page[1] = this.address & 0xff;
+//			page[0] = (this.address >> 8) & 0xff;
+//			// lsb
+//			page[1] = this.address & 0xff;
 			
 			// copy data onto stk page
 			System.arraycopy(data, 0, page, 2, data.length);
@@ -369,6 +372,9 @@ public class Stk500 implements SerialPortEventListener{
 		return pages;
 	}
 	
+	final int FIRST = 0xd;
+	final int LAST = 0xf;
+	
 	public void run() throws Exception {
 		int[] program = process(null);
 		
@@ -382,14 +388,14 @@ public class Stk500 implements SerialPortEventListener{
 		for (int i = 0; i < pages.size(); i++) {
 			Page page = pages.get(i);
 			
-			System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", address is " + page.getAddress() + ", len is " + page.getData().length + ", page is " + toHex(page.getPage()) + ", data is " + toHex(page.getData()));
+			System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", address is " + page.getAddress() + ", data is " + toHex(page.getPage()));
 			
 			if (i == 0) {
 				write(0xd);
 			} else if (i == pages.size() - 1) {
 				write(0xf);
 			} else {
-				write(0xe);
+				write(0);
 			}
 		
 //			// packet len = ctrl + len + addr high/low + data

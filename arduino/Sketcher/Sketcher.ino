@@ -95,6 +95,7 @@ uint8_t buffer[BUFFER_SIZE];
 uint8_t read_buffer[READ_BUFFER_SIZE];
 
 
+// lots of serial data seems to crash leonardo
 #define VERBOSE false
 
 // wiring:
@@ -205,7 +206,7 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
     getProgrammerSerial()->write((char) command);
 
   
-  if (arr != NULL) {
+  if (arr != NULL && len > 0) {
     for (int i = offset; i < offset + len; i++) {
       getProgrammerSerial()->write((char) arr[i]);
 
@@ -285,7 +286,7 @@ int check_duino() {
      return -1;   
     }
     
-    Serial.print("Major is "); Serial.println(read_buffer[0], HEX);
+    Serial.print("Firmware version is "); Serial.println(read_buffer[0], HEX);
     
     cmd_buffer[0] = 0x82;
     data_len = send(STK_GET_PARAMETER, cmd_buffer, 0, 1, 1);
@@ -326,11 +327,14 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     // ctrl,len,addr high/low
     // address is byte index 2,3
     
+    // [55] . [00] . [00] 
     if (send(STK_LOAD_ADDRESS, buffer, addr_offset, 2, 0) == -1) {
       Serial.println("load addr failed");
       return -1;
     }
-        
+     
+    // [64] . [00] . [80] F [46] . [0c] .
+    
     // rewrite buffer to make things easier
     // data starts at addr_offset + 2
     // format of prog_page is 0x00, data_len, 0x46, data
@@ -395,15 +399,23 @@ void setup() {
   // fail
 //  Serial1.begin(19200);
 }
-    
-void reset() {
+
+int count = 0;
+bool prog_mode = false;
+bool is_first_page = false;
+bool is_last_page = false;
+
+void resetState() {
   pos = 0;
   len = 0;
+  prog_mode = false;
+  is_first_page = false;
+  is_last_page = false;          
 }
 
-long last = 0;
-int count = 0;
-  
+const int FIRST_PAGE = 0xd;
+const int LAST_PAGE = 0xf;
+
 void loop() {
   
   int b = 0;
@@ -414,80 +426,77 @@ void loop() {
     b = Serial.read();
     
     if (pos == 0) {
+      // has nothing to do with programming, don't need this in buffer
       buffer[pos] = b;
             
-      if (b == 1) {
-        
-      } else if (b == 2) {
-        Serial.println("done");  
+      if (b == FIRST_PAGE) {
+        prog_mode = true;
+        is_first_page = true;
+      } else if (b == LAST_PAGE) {
+        is_last_page = true;
+      } else {
+        is_first_page = false;
+        is_last_page = false;        
       }
-    } else if (pos == 1) {
-      // len
+    } else if (pos == 1 && prog_mode) {
+      // length
       buffer[pos] = b;
       len = b;      
-    } else if (pos == 2) {
-      // addr high
-      buffer[pos] = b;
-      //Serial.print("addr high uint8_t is "); Serial.println(uint8_t, HEX);
-    } else if (pos == 3) {
-      // addr low
-      buffer[pos] = b;
-      //Serial.print("addr low uint8_t is "); Serial.println(uint8_t, HEX);      
-    } else if (pos < len) {
+    } else if (pos < (len - 1) && prog_mode) {
       // data
       buffer[pos] = b;
+    } else if (pos == len - 1 && prog_mode) {
+      // complete page
       
-      if (pos == len - 1) {
+      if (is_first_page) {
+        // first page, reset the target and perform check
+        bounce();
         
-        if (buffer[0] == 0xd) {
-          // first packet
-          // last uint8_t in packet
-          // we have a page at this point
+        if (check_duino() != 0) {
+          Serial.println("Check failed!"); 
+          resetState();
+          continue;
+        } 
+        
+        if (send(STK_ENTER_PROGMODE, buffer, 0, 0, 0) == -1) {
+          Serial.println("STK_ENTER_PROGMODE failure");
+          resetState();
+          continue;            
+        }        
+      }
+      
+      if (VERBOSE) {
+        dump_buffer(buffer, "prog_page", len);        
+      }
 
-          
-          // TODO only bounce once!!!!
-          bounce();
-          
-          if (check_duino() != 0) {
-            Serial.println("Check failed!"); 
-            reset();
-            continue;
-          }        
+      send_page(2, len - 4); 
+      // send ok after each page so client knows to send another
+      Serial.println("ok");
+      
+     if (is_last_page) {
+        // done. leave prog mode
+        if (send(STK_LEAVE_PROGMODE, buffer, 0, 0, 0) == -1) {
+          Serial.println("STK_LEAVE_PROGMODE failure");
         }
         
-        if (VERBOSE) {
-          dump_buffer(buffer, "prog_page", len);        
-        }
-      
-        send_page(2, len - 4); 
-        
-        Serial.println("ok");        
-
-        reset();      
-        continue;        
+        resetState();      
+        continue; 
       }
     }
      
     pos++;
     
+    // TODO pos > 0 && !prog_mode
     if (pos >= BUFFER_SIZE) {
       Serial.println("Error read past buffer");
-      reset();
+      resetState();
     }
   }
   
-  
+  // oops, got some data we are not expecting
   if (Serial1.available() > 0) {
     uint8_t ch = Serial1.read();
-    Serial.print("Got @"); Serial.print(count, DEC); Serial.print(" "); Serial.println(ch, HEX);
+    Serial.print("Unexpected reply @"); Serial.print(count, DEC); Serial.print(" "); Serial.println(ch, HEX);
     count++;
   }
-    
-    
-          
-  if (millis() - last > 1000) {
-//    Serial.println("No serial available");
-    last = millis();
-  }
-  
 }
