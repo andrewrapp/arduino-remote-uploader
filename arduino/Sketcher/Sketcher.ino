@@ -96,7 +96,7 @@ uint8_t read_buffer[READ_BUFFER_SIZE];
 
 
 // lots of serial data seems to crash leonardo
-#define VERBOSE false
+#define VERBOSE true
 
 // wiring:
 //const int ssTx = 4;
@@ -113,12 +113,6 @@ const int resetPin = 8;
 // len,addr high, addr low,data
 
 // TODO start uint8_t + escaping and checksum
-
-uint8_t len = 0;
-uint8_t data_len = 0;
-uint8_t pos = 0;
-uint8_t high = 0;
-uint8_t low = 0;
 
 HardwareSerial* getProgrammerSerial() {
   return &Serial1;
@@ -144,9 +138,9 @@ int read_response(uint8_t len, int timeout) {
   long start = millis();
   int pos = 0;
   
-  if (VERBOSE) {
-    Serial.print("read_response() expecting reply len: "); Serial.println(len, DEC);    
-  }
+//  if (VERBOSE) {
+    //Serial.print("read_response() expecting reply len: "); Serial.println(len, DEC);    
+//  }
 
   while (millis() - start < timeout) {
     
@@ -155,9 +149,10 @@ int read_response(uint8_t len, int timeout) {
     if (getProgrammerSerial()->available() > 0) {
       read_buffer[pos] = getProgrammerSerial()->read();
       
-      if (VERBOSE) {
-        Serial.print("read_response()<-"); Serial.println(read_buffer[pos], HEX);        
-      }
+      // extra verbose
+//      if (VERBOSE) {
+//        Serial.print("read_response()<-"); Serial.println(read_buffer[pos], HEX);        
+//      }
 
       pos++;
       
@@ -179,14 +174,16 @@ int read_response(uint8_t len, int timeout) {
   return -1;
 }
 
-void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
+void dump_buffer(uint8_t arr[], char context[], uint8_t offset, uint8_t len) {
   Serial.print(context);
+  // weird this crashes leonardo
+  //Serial.print("start at "); Serial.print(offset, DEC); Serial.print(" len "); Serial.print(len, DEC);
   Serial.print(": ");
   
-  for (int i = 0; i < len; i++) {
+  for (int i = offset; i < offset + len; i++) {
     Serial.print(arr[i], HEX);
     
-    if (i < len -1) {
+    if (i < (offset + len) -1) {
       Serial.print(",");
     }
   }
@@ -199,20 +196,38 @@ void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
 int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t response_length) {
 
     if (VERBOSE) {
-      Serial.print("send() command "); Serial.println(command, HEX);
-      Serial.print("send() expect resp len "); Serial.println(response_length, DEC);
+      if (command == STK_GET_PARAMETER) {
+        Serial.print("send() STK_GET_PARAMETER: "); Serial.println(command, HEX);  
+      } else if (command == STK_ENTER_PROGMODE) {
+        Serial.print("send() STK_ENTER_PROGMODE: "); Serial.println(command, HEX);          
+      } else if (command == STK_LEAVE_PROGMODE) {
+        Serial.print("send() STK_LEAVE_PROGMODE: "); Serial.println(command, HEX);  
+      } else if (command == STK_LOAD_ADDRESS) {
+        Serial.print("send() STK_LOAD_ADDRESS: "); Serial.println(command, HEX);  
+      } else if (command == STK_PROG_PAGE) {
+        Serial.print("send() STK_PROG_PAGE: "); Serial.println(command, HEX);  
+      } else if (command == STK_READ_PAGE) {
+        Serial.print("send() STK_READ_PAGE: "); Serial.println(command, HEX);  
+      } else if (command == STK_READ_SIGN) {
+        Serial.print("send() STK_READ_SIGN: "); Serial.println(command, HEX);  
+      } else {
+        Serial.print("send() unexpected command: "); Serial.println(command, HEX);          
+      }
     }
     
     getProgrammerSerial()->write((char) command);
 
-  
   if (arr != NULL && len > 0) {
     for (int i = offset; i < offset + len; i++) {
       getProgrammerSerial()->write((char) arr[i]);
 
-      if (VERBOSE) {
-        Serial.print("send()->"); Serial.println(arr[i], HEX);  
-      }      
+//      if (VERBOSE) {
+//        Serial.print("send()->"); Serial.println(arr[i], HEX);  
+//      }      
+    }
+    
+    if (VERBOSE) {
+      dump_buffer(arr, "send()->", offset, len);
     }
   }
   
@@ -228,7 +243,7 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
   }
   
   if (VERBOSE) {
-    dump_buffer(read_buffer, "send_reply", reply_len);    
+    dump_buffer(read_buffer, "send_reply", 0, reply_len);    
   }
 
   if (reply_len < 2) {
@@ -308,7 +323,6 @@ int check_duino() {
       return -1;
     }
 
-    // weird tomatoless has 0 response bytes
     data_len = send(STK_READ_SIGN, NULL, 0, 0, 3);
     
     if (data_len != 3) {      
@@ -320,6 +334,11 @@ int check_duino() {
       return -1;
     }
     
+    // TODO
+    // avrdude does a set device
+    //avrdude: Send: B [42] . [86] . [00] . [00] . [01] . [01] . [01] . [01] . [03] . [ff] . [ff] . [ff] . [ff] . [00] . [80] . [02] . [00] . [00] . [00] @ [40] . [00]   [20]     
+    // then set device ext
+    //avrdude: Send: E [45] . [05] . [04] . [d7] . [c2] . [00]   [20]     
     return 0;
 }
 
@@ -340,6 +359,8 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     // format of prog_page is 0x00, data_len, 0x46, data
     buffer[addr_offset - 1] = 0;
     buffer[addr_offset] = data_len;
+    
+    //WTF avrdude doesn't send this for optiboot 5
     buffer[addr_offset + 1] = 0x46;
     //remaining buffer is data
     
@@ -374,12 +395,9 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
         Serial.print("Error: reply buffer does not match write buffer at "); Serial.println(i, DEC);
         return -1;
       }
-    } 
-    
-    if (VERBOSE) {
-      Serial.println("Read page verified");      
     }
-
+    
+    return 0;
 }
 
 void setup() {
@@ -400,21 +418,34 @@ void setup() {
 //  Serial1.begin(19200);
 }
 
+uint8_t page_len = 0;
+//uint8_t data_len = 0;
+uint8_t pos = 0;
+uint8_t high = 0;
+uint8_t low = 0;
+
 int count = 0;
 bool prog_mode = false;
 bool is_first_page = false;
 bool is_last_page = false;
 
-void resetState() {
+// called after each page is completed
+void pageReset() {
   pos = 0;
-  len = 0;
-  prog_mode = false;
+  page_len = 0;
   is_first_page = false;
-  is_last_page = false;          
+  is_last_page = false;  
+}
+
+// called after programming completes
+void progReset() {
+  pageReset();
+  prog_mode = false;
 }
 
 const int FIRST_PAGE = 0xd;
 const int LAST_PAGE = 0xf;
+const int PROG_PAGE = 0xa;
 
 void loop() {
   
@@ -422,6 +453,8 @@ void loop() {
 
   // each page is ctrl,len,high,low,data
 
+  // receive a page at a time, ex
+  // f,80,e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1f, data is e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1fe,44,f,80,e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1f,  
   while (Serial.available() > 0) {
     b = Serial.read();
     
@@ -434,19 +467,19 @@ void loop() {
         is_first_page = true;
       } else if (b == LAST_PAGE) {
         is_last_page = true;
-      } else {
-        is_first_page = false;
-        is_last_page = false;        
       }
     } else if (pos == 1 && prog_mode) {
       // length
-      buffer[pos] = b;
-      len = b;      
-    } else if (pos < (len - 1) && prog_mode) {
+      // length is only the data length,  so add 4 byte (ctrl, len, addr high, low)
+      buffer[pos] = b + 4;
+      page_len = buffer[pos];      
+      Serial.print("page len is "); Serial.println(b, DEC);
+    } else if (pos < page_len - 1 && prog_mode) {
       // data
       buffer[pos] = b;
-    } else if (pos == len - 1 && prog_mode) {
+    } else if (pos == (page_len - 1) && prog_mode) {
       // complete page
+      buffer[pos] = b;
       
       if (is_first_page) {
         // first page, reset the target and perform check
@@ -454,33 +487,43 @@ void loop() {
         
         if (check_duino() != 0) {
           Serial.println("Check failed!"); 
-          resetState();
+          progReset();
           continue;
         } 
         
         if (send(STK_ENTER_PROGMODE, buffer, 0, 0, 0) == -1) {
           Serial.println("STK_ENTER_PROGMODE failure");
-          resetState();
+          progReset();
           continue;            
         }        
       }
       
       if (VERBOSE) {
-        dump_buffer(buffer, "prog_page", len);        
+        dump_buffer(buffer, "prog_page", 0, page_len);        
       }
 
-      send_page(2, len - 4); 
-      // send ok after each page so client knows to send another
-      Serial.println("ok");
+      if (send_page(2, page_len - 4) != -1) {
+        // send ok after each page so client knows to send another
+        Serial.println("ok");       
+      } else {
+        Serial.println("Send page failure"); 
+        progReset();      
+        continue;         
+      }
       
-     if (is_last_page) {
+      if (is_last_page) {
         // done. leave prog mode
         if (send(STK_LEAVE_PROGMODE, buffer, 0, 0, 0) == -1) {
           Serial.println("STK_LEAVE_PROGMODE failure");
+          progReset();
+          continue;            
         }
         
-        resetState();      
+        progReset();      
         continue; 
+      } else {
+        pageReset();  
+        continue;      
       }
     }
      
@@ -489,7 +532,7 @@ void loop() {
     // TODO pos > 0 && !prog_mode
     if (pos >= BUFFER_SIZE) {
       Serial.println("Error read past buffer");
-      resetState();
+      progReset();
     }
   }
   

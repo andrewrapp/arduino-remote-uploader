@@ -9,11 +9,9 @@ import gnu.io.SerialPortEventListener;
 import gnu.io.UnsupportedCommOperationException;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
-import java.util.Arrays;
 import java.util.Enumeration;
 import java.util.List;
 import java.util.TooManyListenersException;
@@ -48,7 +46,7 @@ public class Stk500 implements SerialPortEventListener{
 	public int[] process(String file) throws IOException {
 	//	    File hexFile = new File(file);
 		
-		File hexFile = new File("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build6764070264950839846.tmp/HelloTest.cpp.hex");
+		File hexFile = new File("/Users/andrew/Documents/dev/arduino-sketch-loader/HelloTest.cpp.hex");
 	    	
 	        // Look at this doc to work out what we need and don't. Max is about 122kb.
 	        // https://bluegiga.zendesk.com/entries/42713448--REFERENCE-Updating-BLE11x-firmware-using-UART-DFU
@@ -89,16 +87,10 @@ public class Stk500 implements SerialPortEventListener{
 	    		int type = Integer.decode("0x" + dataLine.substring(6, 8));	    			
     		
 	    		checksum += length + addr + type;
-	    		
-	    		// at least one line is 14 length, not the last either
-	    		
+	
 	    		if (length != 16) {
 	    			System.out.println("Length is " + length + " " + line);
 	    		}
-	    		
-//		    		if (ARDUINO_BLOB_SIZE % length != 0) {
-//		    			throw new RuntimeException("Length " + length + " is not divisible by ARDUINO_BLOB_SIZE " + ARDUINO_BLOB_SIZE);
-//		    		}
 	    		
 	    		System.out.println("len is " + length + ", addr is " + addr + ", type is " + type);
 	    		
@@ -131,7 +123,6 @@ public class Stk500 implements SerialPortEventListener{
                 System.out.println("Program position is " + position);
                 {
                 	// FIXME if there is an offset we'd be including it in the data, oops
-                	
                 	int i = 8;
 	                // data starts at 8 (4th byte) to end minus checksum
 	                for (;i < 8 + (length*2); i+=2) {
@@ -144,7 +135,9 @@ public class Stk500 implements SerialPortEventListener{
 	                    // 
 	                    program[position] = datum;
 	                    position++;
-	                }	                	
+	                }	     
+	                
+	                System.out.println("Parse program data " + toHex(program, position - length, length));
 	                
 	                // we should be at the checksum position
 	                if (i != dataLine.length() - 2) {
@@ -296,7 +289,7 @@ public class Stk500 implements SerialPortEventListener{
 		serialPort.getOutputStream().write(i);
 	}
 
-	static class Page {
+	class Page {
 		private int address;
 //		private List<Integer> data = Lists.newArrayList();
 		private int[] data;
@@ -314,6 +307,8 @@ public class Stk500 implements SerialPortEventListener{
 			int[] data = new int[dataLength];
 			System.arraycopy(program, offset, data, 0, dataLength);
 			this.data = data;
+			
+			System.out.println("data is " + toHex(data));
 			
 			page = new int[dataLength + 2];
 
@@ -346,9 +341,8 @@ public class Stk500 implements SerialPortEventListener{
 	}
 	
 	public List<Page> formatPages(int[] program, int pageSize) {		
-		List<Page> pages = Lists.newArrayList();
-		
-		System.out.println("Program length is " + program.length);
+		List<Page> pages = Lists.newArrayList();		
+		System.out.println("Program length is " + program.length + ", page size is " + pageSize);
 		
 		int position = 0;
 		
@@ -363,6 +357,8 @@ public class Stk500 implements SerialPortEventListener{
 				length = program.length - position;
 			}
 
+			System.out.println("Creating page for " + toHex(program, position, length));
+			
 			pages.add(new Page(program, position, length));
 			
 			// index to next position
@@ -372,8 +368,9 @@ public class Stk500 implements SerialPortEventListener{
 		return pages;
 	}
 	
-	final int FIRST = 0xd;
-	final int LAST = 0xf;
+	final int FIRST_PAGE = 0xd;
+	final int LAST_PAGE = 0xf;
+	final int PAGE_DATA = 0xa;
 	
 	public void run() throws Exception {
 		int[] program = process(null);
@@ -388,18 +385,18 @@ public class Stk500 implements SerialPortEventListener{
 		for (int i = 0; i < pages.size(); i++) {
 			Page page = pages.get(i);
 			
-			System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", address is " + page.getAddress() + ", data is " + toHex(page.getPage()));
+			System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", length is " + page.getData().length + ", address is " + page.getAddress() + ", data is " + toHex(page.getPage()));
 			
 			if (i == 0) {
-				write(0xd);
+				write(FIRST_PAGE);
 			} else if (i == pages.size() - 1) {
-				write(0xf);
+				write(LAST_PAGE);
 			} else {
-				write(0);
+				write(PAGE_DATA);
 			}
 		
-//			// packet len = ctrl + len + addr high/low + data
-			write(page.getPage().length + 2);
+//			// only data length, does not include ctrl, len, or addr bytes
+			write(page.getData().length);
 			
 			for (int k = 0; k < page.getPage().length; k++) {
 				write(page.getPage()[k] & 0xff);	
