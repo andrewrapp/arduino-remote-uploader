@@ -1,39 +1,22 @@
 #include <SoftwareSerial.h>
 
 
+// ideas
+// this prog will fit in memory. load in memory to test 128 byte pages
 
-// arduino isp failed with "Yikes!  Invalid device signature." Try getting pocket avr (usbtiny) to burn bootloader
-// put optiboot on decimila with RBBB as programmer. see what that does. try latest 168 bootloader
-
-// another idea: use optiloader to burn bootloader, or use modify optiloader to write sketch w/o a bootloader
+// install atmega328 chip into diecimila and flash optiboot, or attempt to program the RBBB, or arduino pros
+// buffer the pages so I can program 128 pages by collecting two 64 byte before sending
+// only major difference now is page size
 
 // moteino/dual optiboot seems to take the approach of using an external flash to write the program, then the bootloader reads from ext. flash an updates program https://github.com/LowPowerLab/DualOptiboot
 // uses eeprom (soic package) http://www.digikey.com/product-detail/en/W25X40CLSNIG/W25X40CLSNIG-ND/3008652
 
-
-// only major difference now is page size
-/*
-- usb serial issue drops bytes around position 90. 128 seems to be the page size 
-- Try optiboot if no success with origin bootloader
-- look at other bootloaders
+// TODO send # of pages to expect in header
 
 // boards.txt, baud rate, bootloader and more various boards
 // /Applications/Arduino.app//Contents/Resources/Java/hardware/arduino/boards.txt
 
-
-
-// UGH, TRY ONE OF THE ARDUINO PROS, or RBBB (could it be the atmega 128?)
-
-bootloader getch returns unit8_t. casts uint8_t to char before assigning to register
-
-0x41, 0x81, 0x20
-
-// 9600 results in 48,65,6C
-// 19200 results in 80,98,66 (hex)
-// 115200 results in 0,0,0
-
-
-
+/*
 impeeduino https://github.com/electricimp/reference/tree/master/hardware/impeeduino
 socat virtual comm to socket http://stackoverflow.com/questions/22624653/create-a-virtual-serial-port-connection-over-tcp
 optiloader (bootloader in sketch) https://github.com/WestfW/OptiLoader/blob/master/optiLoader.pde
@@ -46,10 +29,9 @@ http://www.cs.ou.edu/~fagg/classes/general/atmel/avrdude.pdf
 https://raw.githubusercontent.com/adafruit/ArduinoISP/master/ArduinoISP.ino
 http://www.atmel.com/Images/doc2525.pdf
 http://forum.arduino.cc/index.php?topic=117299.0;nowap
-
 */
 
-// 128 + 3 bytes len/addr
+// only need 128=> + 4 bytes len/addr
 #define BUFFER_SIZE 150
 #define READ_BUFFER_SIZE 150
 
@@ -110,8 +92,6 @@ const int resetPin = 8;
 
 // leanardo boss (connected to usb)
 // diecimila with optiboot is target
-
-// TODO start uint8_t + escaping and checksum
 
 SoftwareSerial nss(ssTx, ssRx);
 
@@ -218,11 +198,13 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
       }
     }
     
-    getProgrammerSerial()->write((char) command);
+    //getProgrammerSerial()->write((char) command);
+    getProgrammerSerial()->write(command);
 
   if (arr != NULL && len > 0) {
     for (int i = offset; i < offset + len; i++) {
-      getProgrammerSerial()->write((char) arr[i]);
+      //getProgrammerSerial()->write((char) arr[i]);
+      getProgrammerSerial()->write(arr[i]);
 
 //      if (VERBOSE) {
 //        getDebugSerial()->print("send()->"); getDebugSerial()->println(arr[i], HEX);  
@@ -234,7 +216,8 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
     }
   }
   
-  getProgrammerSerial()->write((char) CRC_EOP);
+  //getProgrammerSerial()->write((char) CRC_EOP);
+  getProgrammerSerial()->write(CRC_EOP);
 //  getProgrammerSerial()->flush();
       
   // add 2 bytes since we always expect to get back STK_INSYNC + STK_OK
@@ -505,7 +488,7 @@ void loop() {
       }
       
       if (VERBOSE) {
-//        dump_buffer(buffer, "prog_page", 0, page_len);        
+        dump_buffer(buffer, "prog_page", 0, page_len);        
       }
 
       if (send_page(2, page_len - 4) != -1) {

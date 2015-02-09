@@ -285,7 +285,7 @@ public class Stk500 implements SerialPortEventListener{
 	}
 	
 	public void write(int i) throws IOException {
-		System.out.print(Integer.toHexString(i) + ",");
+//		System.out.print(Integer.toHexString(i) + ",");
 		serialPort.getOutputStream().write(i);
 	}
 
@@ -310,20 +310,19 @@ public class Stk500 implements SerialPortEventListener{
 			
 			System.out.println("data is " + toHex(data));
 			
-			page = new int[dataLength + 2];
+			this.page = new int[dataLength + 2];
 
 			// little endian according to avrdude
 			page[0] = this.address & 0xff;
 			// msb
 			page[1] = (this.address >> 8) & 0xff;
 			
-			// addr msb
-//			page[0] = (this.address >> 8) & 0xff;
-//			// lsb
-//			page[1] = this.address & 0xff;
-			
+			System.out.println("Page lsb is " + Integer.toHexString(page[0]) + ", msb is " + Integer.toHexString(page[1]));
+
 			// copy data onto stk page
 			System.arraycopy(data, 0, page, 2, data.length);
+			
+			System.out.println("page is " + toHex(page));
 		}
 		
 		public int getAddress() {
@@ -361,8 +360,15 @@ public class Stk500 implements SerialPortEventListener{
 			
 			pages.add(new Page(program, position, length));
 			
+			if (pages.size() >= 33) {
+				System.out.println("Page size is " + pages.size() + ", page data is " + toHex(pages.get(pages.size() - 1).getPage()));
+			}
 			// index to next position
 			position+=length;
+		}
+		
+		if (position != program.length) {
+			throw new RuntimeException("oops");
 		}
 		
 		return pages;
@@ -385,7 +391,12 @@ public class Stk500 implements SerialPortEventListener{
 		for (int i = 0; i < pages.size(); i++) {
 			Page page = pages.get(i);
 			
-			System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", length is " + page.getData().length + ", address is " + page.getAddress() + ", data is " + toHex(page.getPage()));
+			System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", length is " + page.getData().length + ", address is " + page.getAddress() + ", page is " + toHex(page.getPage()));
+			
+//			if (i == 33) {
+//				System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", length is " + page.getData().length + ", address is " + page.getAddress() + ", page is " + toHex(page.getPage()));	
+//			}
+			
 			
 			if (i == 0) {
 				write(FIRST_PAGE);
@@ -416,6 +427,10 @@ public class Stk500 implements SerialPortEventListener{
 		}
 		
 		System.out.println("Java done");
+		
+		// wait a few secs for leave prog mode
+		Thread.sleep(5000);
+		
 		System.exit(0);
 	}
 	
