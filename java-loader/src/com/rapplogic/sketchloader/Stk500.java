@@ -19,18 +19,15 @@ import java.util.TooManyListenersException;
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 
-public class Stk500 implements SerialPortEventListener{
+public class Stk500 implements SerialPortEventListener {
 
 	private InputStream inputStream;
 	private SerialPort serialPort;
-	final String CR = System.getProperty("line.separator");
-	final static String port = "/dev/tty.usbmodemfd121";
     private StringBuffer strBuf = new StringBuffer();
     private Object rxNotify = new Object();
     
 	int MAX_PROGRAM_SIZE = 0x20000;
-	int ARDUINO_BLOB_SIZE = 128;
-//	int ARDUINO_BLOB_SIZE = 64;
+	int ARDUINO_PAGE_SIZE = 128;
 	
 	public Stk500() {
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
@@ -47,9 +44,6 @@ public class Stk500 implements SerialPortEventListener{
 	//	    File hexFile = new File(file);
 		
 		File hexFile = new File("/Users/andrew/Documents/dev/arduino-sketch-loader/HelloTest.cpp.hex");
-	    	
-	        // Look at this doc to work out what we need and don't. Max is about 122kb.
-	        // https://bluegiga.zendesk.com/entries/42713448--REFERENCE-Updating-BLE11x-firmware-using-UART-DFU
 	        
 		int[] program = new int[MAX_PROGRAM_SIZE];
 		
@@ -160,11 +154,7 @@ public class Stk500 implements SerialPortEventListener{
                 }
 
                 System.out.println("Position is " + position + ", maxaddr is " + maxaddress);
-                
-                // it will always be the last position +16 bytes per line
-//	                if (position > maxaddress) {
-                	maxaddress = position;
-//	                }              
+                maxaddress = position;            
     		}
     	}
     	
@@ -215,7 +205,7 @@ public class Stk500 implements SerialPortEventListener{
     	return toHex(data, 0, data.length);
     }
     
-	public void open(String serialPortName) throws PortInUseException, IOException, UnsupportedCommOperationException, TooManyListenersException {
+	public void open(String serialPortName, int speed) throws PortInUseException, IOException, UnsupportedCommOperationException, TooManyListenersException {
 		
 		CommPortIdentifier commPortIdentifier = findPort(serialPortName);
 		
@@ -227,7 +217,7 @@ public class Stk500 implements SerialPortEventListener{
 		// activate the DATA_AVAILABLE notifier
 		serialPort.notifyOnDataAvailable(true);
 
-		serialPort.setSerialPortParams(9600, SerialPort.DATABITS_8, 
+		serialPort.setSerialPortParams(speed, SerialPort.DATABITS_8, 
 				SerialPort.STOPBITS_1, SerialPort.PARITY_NONE);
 		serialPort.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
 		
@@ -360,9 +350,6 @@ public class Stk500 implements SerialPortEventListener{
 			
 			pages.add(new Page(program, position, length));
 			
-			if (pages.size() >= 33) {
-				System.out.println("Page size is " + pages.size() + ", page data is " + toHex(pages.get(pages.size() - 1).getPage()));
-			}
 			// index to next position
 			position+=length;
 		}
@@ -381,23 +368,18 @@ public class Stk500 implements SerialPortEventListener{
 	public void run() throws Exception {
 		int[] program = process(null);
 		
-		List<Page> pages = formatPages(program, 64);
+		List<Page> pages = formatPages(program, ARDUINO_PAGE_SIZE);
 		
 		System.out.println("Program length is " + program.length + ", there are " + pages.size() + " pages");
 		
-		this.open("/dev/tty.usbmodemfa131");
+		this.open("/dev/tty.usbmodemfa131", 19200);
 //		this.open("/dev/tty.usbserial-A6007nto");
 		
 		for (int i = 0; i < pages.size(); i++) {
 			Page page = pages.get(i);
 			
-			System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", length is " + page.getData().length + ", address is " + page.getAddress() + ", page is " + toHex(page.getPage()));
-			
-//			if (i == 33) {
-//				System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", length is " + page.getData().length + ", address is " + page.getAddress() + ", page is " + toHex(page.getPage()));	
-//			}
-			
-			
+			System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", length is " + page.getData().length + ", address is " + Integer.toHexString(page.getAddress()) + ", page is " + toHex(page.getPage()));
+
 			if (i == 0) {
 				write(FIRST_PAGE);
 			} else if (i == pages.size() - 1) {
@@ -415,7 +397,7 @@ public class Stk500 implements SerialPortEventListener{
 			
 			serialPort.getOutputStream().flush();
 			
-			System.out.println("\nwaiting for ok");
+			System.out.println("waiting for ok");
 //			// wait for reply
 			synchronized (rxNotify) {
 				rxNotify.wait();
@@ -428,7 +410,7 @@ public class Stk500 implements SerialPortEventListener{
 		
 		System.out.println("Java done");
 		
-		// wait a few secs for leave prog mode
+		// wait a few secs for leave prog mode reply
 		Thread.sleep(5000);
 		
 		System.exit(0);

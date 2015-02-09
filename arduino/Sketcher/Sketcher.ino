@@ -1,17 +1,11 @@
 #include <SoftwareSerial.h>
 
-
-// ideas
 // this prog will fit in memory. load in memory to test 128 byte pages
-
-// install atmega328 chip into diecimila and flash optiboot, or attempt to program the RBBB, or arduino pros
+// send # of pages to expect in header
+// flash optiboot on arduino pros
 // buffer the pages so I can program 128 pages by collecting two 64 byte before sending
-// only major difference now is page size
-
 // moteino/dual optiboot seems to take the approach of using an external flash to write the program, then the bootloader reads from ext. flash an updates program https://github.com/LowPowerLab/DualOptiboot
 // uses eeprom (soic package) http://www.digikey.com/product-detail/en/W25X40CLSNIG/W25X40CLSNIG-ND/3008652
-
-// TODO send # of pages to expect in header
 
 // boards.txt, baud rate, bootloader and more various boards
 // /Applications/Arduino.app//Contents/Resources/Java/hardware/arduino/boards.txt
@@ -31,10 +25,25 @@ http://www.atmel.com/Images/doc2525.pdf
 http://forum.arduino.cc/index.php?topic=117299.0;nowap
 */
 
+/* CONFIGURATION
+
+// Arduino Programmer: Leonardo. Runs this Sketch
+// Arduino Target: Diecimila (168) with Optiboot 5.0a
+
+Wiring:
+// GND->GND
+// 5V->5V
+// TX->RX
+// RX->TX
+// Programmer (8) -> Target (Reset)
+// Programer USB -> Host
+
+// SoftSerial optional debugging
+*/
+
 // only need 128=> + 4 bytes len/addr
 #define BUFFER_SIZE 150
 #define READ_BUFFER_SIZE 150
-
 
 #define STK_OK              0x10
 #define STK_FAILED          0x11  // Not used
@@ -79,19 +88,13 @@ uint8_t cmd_buffer[1];
 uint8_t buffer[BUFFER_SIZE];
 uint8_t read_buffer[READ_BUFFER_SIZE];
 
-
 // lots of serial data seems to crash leonardo
-#define VERBOSE true
+#define VERBOSE false
 
 // wiring:
 const int ssTx = 4;
 const int ssRx = 5;
 const int resetPin = 8;
-// common ground
-// 5V leonardo -> 5V diecimila
-
-// leanardo boss (connected to usb)
-// diecimila with optiboot is target
 
 SoftwareSerial nss(ssTx, ssRx);
 
@@ -100,7 +103,7 @@ Stream* getProgrammerSerial() {
 }
 
 Stream* getDebugSerial() {
-  //nss now working
+  //nss not working
 //  return &nss;  
   return &Serial;
 }
@@ -263,18 +266,15 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
 
 void bounce() {    
     // Bounce the reset pin
-    // ported from tomatoless
-    getDebugSerial()->println("Bouncing the Arduino reset pin");
-//    delay(500);
+    getDebugSerial()->println("Bouncing the Arduino");
     // set reset pin low
     digitalWrite(resetPin, LOW);
     delay(200);
     digitalWrite(resetPin, HIGH);
     delay(300);
-    //delay(10);
 }
 
-int check_duino() {
+int initTarget() {
   clear_read();
     
     int data_len = 0;
@@ -320,7 +320,7 @@ int check_duino() {
       return -1;
     }
     
-    // TODO
+    // IGNORED BY OPTIBOOT
     // avrdude does a set device
     //avrdude: Send: B [42] . [86] . [00] . [00] . [01] . [01] . [01] . [01] . [03] . [ff] . [ff] . [ff] . [ff] . [00] . [80] . [02] . [00] . [00] . [00] @ [40] . [00]   [20]     
     // then set device ext
@@ -342,15 +342,13 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     
     // rewrite buffer to make things easier
     // data starts at addr_offset + 2
-    // format of prog_page is 0x00, data_len, 0x46, data
+    // format of prog_page is 0x00, data_len, 0x46, [data]
     buffer[addr_offset - 1] = 0;
     buffer[addr_offset] = data_len;
-    
-    //WTF avrdude doesn't send this for optiboot 5
     buffer[addr_offset + 1] = 0x46;
     //remaining buffer is data
     
-    // send page. len data + command bytes
+    // add 3 to data_len for above bytes and send
     if (send(STK_PROG_PAGE, buffer, addr_offset - 1, data_len + 3, 0) == -1) {
       getDebugSerial()->println("page page failed");
       return -1;       
@@ -387,7 +385,7 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
 }
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(19200);
   // leonardo wait for serial
   while (!Serial);
   
@@ -395,20 +393,14 @@ void setup() {
   
   //diecimilao.upload.maximum_size=15872
   //diecimilao.upload.speed=115200
-
   // configure serial for bootloader baud rate  
   Serial1.begin(115200);
-  // fail
-  //  Serial1.begin(19200);
 
-  nss.begin(9600);
+//  nss.begin(9600);
 }
 
 uint8_t page_len = 0;
-//uint8_t data_len = 0;
 uint8_t pos = 0;
-uint8_t high = 0;
-uint8_t low = 0;
 
 int count = 0;
 bool prog_mode = false;
@@ -429,6 +421,7 @@ void progReset() {
   prog_mode = false;
 }
 
+// first byte in packet indicates if first or last
 const int FIRST_PAGE = 0xd;
 const int LAST_PAGE = 0xf;
 const int PROG_PAGE = 0xa;
@@ -440,12 +433,9 @@ void loop() {
   // each page is ctrl,len,high,low,data
 
   // receive a page at a time, ex
-  // f,80,e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1f, data is e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1fe,44,f,80,e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1f,  
+  // f,80,e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1f
   while (getDebugSerial()->available() > 0) {
     b = getDebugSerial()->read();
-    
-//    Serial.print("loop()<- data is "); Serial.println(b, HEX);
-  
     
     if (pos == 0) {
       // has nothing to do with programming, don't need this in buffer
@@ -458,7 +448,6 @@ void loop() {
         is_last_page = true;
       }
     } else if (pos == 1 && prog_mode) {
-      // length
       // length is only the data length,  so add 4 byte (ctrl, len, addr high, low)
       buffer[pos] = b + 4;
       page_len = buffer[pos];      
@@ -474,7 +463,7 @@ void loop() {
         // first page, reset the target and perform check
         bounce();
         
-        if (check_duino() != 0) {
+        if (initTarget() != 0) {
           getDebugSerial()->println("Check failed!"); 
           progReset();
           continue;
@@ -490,7 +479,8 @@ void loop() {
       if (VERBOSE) {
         dump_buffer(buffer, "prog_page", 0, page_len);        
       }
-
+      
+      // substraact 4 since we don't send our header bytes to the bootloader
       if (send_page(2, page_len - 4) != -1) {
         // send ok after each page so client knows to send another
         getDebugSerial()->println("ok");       
