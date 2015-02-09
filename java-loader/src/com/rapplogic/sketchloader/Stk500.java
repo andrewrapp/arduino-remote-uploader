@@ -375,12 +375,12 @@ public class Stk500 implements SerialPortEventListener{
 	public void run() throws Exception {
 		int[] program = process(null);
 		
-//		List<Page> pages = formatPages(program, ARDUINO_BLOB_SIZE);
 		List<Page> pages = formatPages(program, 64);
 		
 		System.out.println("Program length is " + program.length + ", there are " + pages.size() + " pages");
 		
 		this.open("/dev/tty.usbmodemfa131");
+//		this.open("/dev/tty.usbserial-A6007nto");
 		
 		for (int i = 0; i < pages.size(); i++) {
 			Page page = pages.get(i);
@@ -399,7 +399,7 @@ public class Stk500 implements SerialPortEventListener{
 			write(page.getData().length);
 			
 			for (int k = 0; k < page.getPage().length; k++) {
-				write(page.getPage()[k] & 0xff);	
+				write(page.getPage()[k] & 0xff);
 			}
 			
 			serialPort.getOutputStream().flush();
@@ -416,8 +416,7 @@ public class Stk500 implements SerialPortEventListener{
 		}
 		
 		System.out.println("Java done");
-		
-		Thread.sleep(60000);
+		System.exit(0);
 	}
 	
 	public static void main(String[] args) throws Exception {

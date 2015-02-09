@@ -1,3 +1,5 @@
+#include <SoftwareSerial.h>
+
 
 
 // arduino isp failed with "Yikes!  Invalid device signature." Try getting pocket avr (usbtiny) to burn bootloader
@@ -8,8 +10,9 @@
 // moteino/dual optiboot seems to take the approach of using an external flash to write the program, then the bootloader reads from ext. flash an updates program https://github.com/LowPowerLab/DualOptiboot
 // uses eeprom (soic package) http://www.digikey.com/product-detail/en/W25X40CLSNIG/W25X40CLSNIG-ND/3008652
 
+
+// only major difference now is page size
 /*
-- Power decimila via external power to free serial?
 - usb serial issue drops bytes around position 90. 128 seems to be the page size 
 - Try optiboot if no success with origin bootloader
 - look at other bootloaders
@@ -99,8 +102,8 @@ uint8_t read_buffer[READ_BUFFER_SIZE];
 #define VERBOSE true
 
 // wiring:
-//const int ssTx = 4;
-//const int ssRx = 5;
+const int ssTx = 4;
+const int ssRx = 5;
 const int resetPin = 8;
 // common ground
 // 5V leonardo -> 5V diecimila
@@ -108,14 +111,18 @@ const int resetPin = 8;
 // leanardo boss (connected to usb)
 // diecimila with optiboot is target
 
-// structure
-// data_len = len - 3
-// len,addr high, addr low,data
-
 // TODO start uint8_t + escaping and checksum
 
-HardwareSerial* getProgrammerSerial() {
+SoftwareSerial nss(ssTx, ssRx);
+
+Stream* getProgrammerSerial() {
   return &Serial1;
+}
+
+Stream* getDebugSerial() {
+  //nss now working
+//  return &nss;  
+  return &Serial;
 }
 
 void clear_read() {
@@ -126,32 +133,28 @@ void clear_read() {
   }
   
   if (count > 0) {
-    Serial.print("Discarded "); Serial.print(count, DEC); Serial.println(" extra bytes");
+    getDebugSerial()->print("Discarded "); getDebugSerial()->print(count, DEC); getDebugSerial()->println(" extra bytes");
   }
 }
-
-//HardwareSerial* getDebugSerial() {
-//  return &Serial;
-//}
 
 int read_response(uint8_t len, int timeout) {
   long start = millis();
   int pos = 0;
   
 //  if (VERBOSE) {
-    //Serial.print("read_response() expecting reply len: "); Serial.println(len, DEC);    
+    //getDebugSerial()->print("read_response() expecting reply len: "); getDebugSerial()->println(len, DEC);    
 //  }
 
   while (millis() - start < timeout) {
     
-//    Serial.println("waiting for response");
+//    getDebugSerial()->println("waiting for response");
           
     if (getProgrammerSerial()->available() > 0) {
       read_buffer[pos] = getProgrammerSerial()->read();
       
       // extra verbose
 //      if (VERBOSE) {
-//        Serial.print("read_response()<-"); Serial.println(read_buffer[pos], HEX);        
+//        getDebugSerial()->print("read_response()<-"); getDebugSerial()->println(read_buffer[pos], HEX);        
 //      }
 
       pos++;
@@ -170,26 +173,26 @@ int read_response(uint8_t len, int timeout) {
     return pos;
   }
   
-  Serial.print("read_response() timeout! read "); Serial.print(pos, DEC); Serial.print(" bytes but expected "); Serial.print(len, DEC); Serial.println(" bytes");
+  getDebugSerial()->print("read_response() timeout! read "); getDebugSerial()->print(pos, DEC); getDebugSerial()->print(" bytes but expected "); getDebugSerial()->print(len, DEC); getDebugSerial()->println(" bytes");
   return -1;
 }
 
 void dump_buffer(uint8_t arr[], char context[], uint8_t offset, uint8_t len) {
-  Serial.print(context);
+  getDebugSerial()->print(context);
   // weird this crashes leonardo
-  //Serial.print("start at "); Serial.print(offset, DEC); Serial.print(" len "); Serial.print(len, DEC);
-  Serial.print(": ");
+  //getDebugSerial()->print("start at "); getDebugSerial()->print(offset, DEC); getDebugSerial()->print(" len "); getDebugSerial()->print(len, DEC);
+  getDebugSerial()->print(": ");
   
   for (int i = offset; i < offset + len; i++) {
-    Serial.print(arr[i], HEX);
+    getDebugSerial()->print(arr[i], HEX);
     
     if (i < (offset + len) -1) {
-      Serial.print(",");
+      getDebugSerial()->print(",");
     }
   }
   
-  Serial.println("");
-  Serial.flush();
+  getDebugSerial()->println("");
+  getDebugSerial()->flush();
 }
 
 // Send command and buffer and return length of reply
@@ -197,21 +200,21 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
 
     if (VERBOSE) {
       if (command == STK_GET_PARAMETER) {
-        Serial.print("send() STK_GET_PARAMETER: "); Serial.println(command, HEX);  
+        getDebugSerial()->print("send() STK_GET_PARAMETER: "); getDebugSerial()->println(command, HEX);  
       } else if (command == STK_ENTER_PROGMODE) {
-        Serial.print("send() STK_ENTER_PROGMODE: "); Serial.println(command, HEX);          
+        getDebugSerial()->print("send() STK_ENTER_PROGMODE: "); getDebugSerial()->println(command, HEX);          
       } else if (command == STK_LEAVE_PROGMODE) {
-        Serial.print("send() STK_LEAVE_PROGMODE: "); Serial.println(command, HEX);  
+        getDebugSerial()->print("send() STK_LEAVE_PROGMODE: "); getDebugSerial()->println(command, HEX);  
       } else if (command == STK_LOAD_ADDRESS) {
-        Serial.print("send() STK_LOAD_ADDRESS: "); Serial.println(command, HEX);  
+        getDebugSerial()->print("send() STK_LOAD_ADDRESS: "); getDebugSerial()->println(command, HEX);  
       } else if (command == STK_PROG_PAGE) {
-        Serial.print("send() STK_PROG_PAGE: "); Serial.println(command, HEX);  
+        getDebugSerial()->print("send() STK_PROG_PAGE: "); getDebugSerial()->println(command, HEX);  
       } else if (command == STK_READ_PAGE) {
-        Serial.print("send() STK_READ_PAGE: "); Serial.println(command, HEX);  
+        getDebugSerial()->print("send() STK_READ_PAGE: "); getDebugSerial()->println(command, HEX);  
       } else if (command == STK_READ_SIGN) {
-        Serial.print("send() STK_READ_SIGN: "); Serial.println(command, HEX);  
+        getDebugSerial()->print("send() STK_READ_SIGN: "); getDebugSerial()->println(command, HEX);  
       } else {
-        Serial.print("send() unexpected command: "); Serial.println(command, HEX);          
+        getDebugSerial()->print("send() unexpected command: "); getDebugSerial()->println(command, HEX);          
       }
     }
     
@@ -222,7 +225,7 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
       getProgrammerSerial()->write((char) arr[i]);
 
 //      if (VERBOSE) {
-//        Serial.print("send()->"); Serial.println(arr[i], HEX);  
+//        getDebugSerial()->print("send()->"); getDebugSerial()->println(arr[i], HEX);  
 //      }      
     }
     
@@ -247,17 +250,17 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
   }
 
   if (reply_len < 2) {
-    Serial.println("Invalid response");
+    getDebugSerial()->println("Invalid response");
     return -1; 
   }
 
   if (read_buffer[0] != STK_INSYNC) {
-    Serial.print("Expected STK_INSYNC but was "); Serial.println(read_buffer[0], HEX);
+    getDebugSerial()->print("Expected STK_INSYNC but was "); getDebugSerial()->println(read_buffer[0], HEX);
     return -1;
   }
   
   if (read_buffer[reply_len - 1] != STK_OK) {
-    Serial.print("Expected STK_OK but was "); Serial.println(read_buffer[reply_len - 1], HEX);
+    getDebugSerial()->print("Expected STK_OK but was "); getDebugSerial()->println(read_buffer[reply_len - 1], HEX);
     return -1;    
   }
   
@@ -278,7 +281,7 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
 void bounce() {    
     // Bounce the reset pin
     // ported from tomatoless
-    Serial.println("Bouncing the Arduino reset pin");
+    getDebugSerial()->println("Bouncing the Arduino reset pin");
 //    delay(500);
     // set reset pin low
     digitalWrite(resetPin, LOW);
@@ -301,7 +304,7 @@ int check_duino() {
      return -1;   
     }
     
-    Serial.print("Firmware version is "); Serial.println(read_buffer[0], HEX);
+    getDebugSerial()->print("Firmware version is "); getDebugSerial()->println(read_buffer[0], HEX);
     
     cmd_buffer[0] = 0x82;
     data_len = send(STK_GET_PARAMETER, cmd_buffer, 0, 1, 1);
@@ -310,7 +313,7 @@ int check_duino() {
      return -1;   
     }
 
-    Serial.print("Minor is "); Serial.println(read_buffer[0], HEX);    
+    getDebugSerial()->print("Minor is "); getDebugSerial()->println(read_buffer[0], HEX);    
     
     // this not a valid command. optiboot will send back 0x3 for anything it doesn't understand
     cmd_buffer[0] = 0x83;
@@ -319,7 +322,7 @@ int check_duino() {
     if (data_len == -1) {
       return -1;   
     } else if (read_buffer[0] != 0x3) {
-      Serial.print("Expected 0x3 but was "); Serial.println(read_buffer[0]);    
+      getDebugSerial()->print("Expected 0x3 but was "); getDebugSerial()->println(read_buffer[0]);    
       return -1;
     }
 
@@ -330,7 +333,7 @@ int check_duino() {
       // tomatoless expects a different signature than what I get from optiboot so this might not be effective verification
       // assert(signature.len() == 3 && signature[0] == 0x1E && signature[1] == 0x95 && signature[2] == 0x0F);
     } else if (read_buffer[0] != 0x1E && read_buffer[1] != 0x94 && read_buffer[2] != 0x6) {
-      Serial.println("Signature invalid");
+      getDebugSerial()->println("Signature invalid");
       return -1;
     }
     
@@ -348,7 +351,7 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     
     // [55] . [00] . [00] 
     if (send(STK_LOAD_ADDRESS, buffer, addr_offset, 2, 0) == -1) {
-      Serial.println("load addr failed");
+      getDebugSerial()->println("load addr failed");
       return -1;
     }
      
@@ -366,19 +369,19 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     
     // send page. len data + command bytes
     if (send(STK_PROG_PAGE, buffer, addr_offset - 1, data_len + 3, 0) == -1) {
-      Serial.println("page page failed");
+      getDebugSerial()->println("page page failed");
       return -1;       
     }
 
     uint8_t reply_len = send(STK_READ_PAGE, buffer, addr_offset - 1, 3, data_len);
     
     if (reply_len == -1) {
-      Serial.println("Read page failure");
+      getDebugSerial()->println("Read page failure");
       return -1;
     }
     
     if (reply_len != data_len) {
-      Serial.println("Error: read len does not match data len");
+      getDebugSerial()->println("Error: read len does not match data len");
       return -1;
     }
     
@@ -387,12 +390,12 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     // TODO we can compute checksum on buffer, reset and use for the read buffer!!!!!!!!!!!!!!!
     
     if (VERBOSE) {
-      Serial.print("reply_len is "); Serial.println(reply_len, DEC);      
+      getDebugSerial()->print("reply_len is "); getDebugSerial()->println(reply_len, DEC);      
     }
       
     for (int i = 0; i < reply_len; i++) {        
       if (read_buffer[i] != buffer[addr_offset + 2 + i]) {
-        Serial.print("Error: reply buffer does not match write buffer at "); Serial.println(i, DEC);
+        getDebugSerial()->print("Error: reply buffer does not match write buffer at "); getDebugSerial()->println(i, DEC);
         return -1;
       }
     }
@@ -404,8 +407,6 @@ void setup() {
   Serial.begin(9600);
   // leonardo wait for serial
   while (!Serial);
-
-  //Serial.println("Waiting for sketch");
   
   pinMode(resetPin, OUTPUT);
   
@@ -415,7 +416,9 @@ void setup() {
   // configure serial for bootloader baud rate  
   Serial1.begin(115200);
   // fail
-//  Serial1.begin(19200);
+  //  Serial1.begin(19200);
+
+  nss.begin(9600);
 }
 
 uint8_t page_len = 0;
@@ -455,8 +458,11 @@ void loop() {
 
   // receive a page at a time, ex
   // f,80,e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1f, data is e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1fe,44,f,80,e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1f,  
-  while (Serial.available() > 0) {
-    b = Serial.read();
+  while (getDebugSerial()->available() > 0) {
+    b = getDebugSerial()->read();
+    
+//    Serial.print("loop()<- data is "); Serial.println(b, HEX);
+  
     
     if (pos == 0) {
       // has nothing to do with programming, don't need this in buffer
@@ -473,7 +479,7 @@ void loop() {
       // length is only the data length,  so add 4 byte (ctrl, len, addr high, low)
       buffer[pos] = b + 4;
       page_len = buffer[pos];      
-      Serial.print("page len is "); Serial.println(b, DEC);
+      getDebugSerial()->print("page len is "); getDebugSerial()->println(b, DEC);
     } else if (pos < page_len - 1 && prog_mode) {
       // data
       buffer[pos] = b;
@@ -486,27 +492,27 @@ void loop() {
         bounce();
         
         if (check_duino() != 0) {
-          Serial.println("Check failed!"); 
+          getDebugSerial()->println("Check failed!"); 
           progReset();
           continue;
         } 
         
         if (send(STK_ENTER_PROGMODE, buffer, 0, 0, 0) == -1) {
-          Serial.println("STK_ENTER_PROGMODE failure");
+          getDebugSerial()->println("STK_ENTER_PROGMODE failure");
           progReset();
           continue;            
         }        
       }
       
       if (VERBOSE) {
-        dump_buffer(buffer, "prog_page", 0, page_len);        
+//        dump_buffer(buffer, "prog_page", 0, page_len);        
       }
 
       if (send_page(2, page_len - 4) != -1) {
         // send ok after each page so client knows to send another
-        Serial.println("ok");       
+        getDebugSerial()->println("ok");       
       } else {
-        Serial.println("Send page failure"); 
+        getDebugSerial()->println("Send page failure"); 
         progReset();      
         continue;         
       }
@@ -514,7 +520,7 @@ void loop() {
       if (is_last_page) {
         // done. leave prog mode
         if (send(STK_LEAVE_PROGMODE, buffer, 0, 0, 0) == -1) {
-          Serial.println("STK_LEAVE_PROGMODE failure");
+          getDebugSerial()->println("STK_LEAVE_PROGMODE failure");
           progReset();
           continue;            
         }
@@ -531,15 +537,15 @@ void loop() {
     
     // TODO pos > 0 && !prog_mode
     if (pos >= BUFFER_SIZE) {
-      Serial.println("Error read past buffer");
+      getDebugSerial()->println("Error read past buffer");
       progReset();
     }
   }
   
   // oops, got some data we are not expecting
-  if (Serial1.available() > 0) {
-    uint8_t ch = Serial1.read();
-    Serial.print("Unexpected reply @"); Serial.print(count, DEC); Serial.print(" "); Serial.println(ch, HEX);
+  if (getProgrammerSerial()->available() > 0) {
+    uint8_t ch = getProgrammerSerial()->read();
+    getDebugSerial()->print("Unexpected reply @"); getDebugSerial()->print(count, DEC); getDebugSerial()->print(" "); getDebugSerial()->println(ch, HEX);
     count++;
   }
 }
