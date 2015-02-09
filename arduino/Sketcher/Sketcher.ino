@@ -88,7 +88,7 @@ uint8_t cmd_buffer[1];
 uint8_t buffer[BUFFER_SIZE];
 uint8_t read_buffer[READ_BUFFER_SIZE];
 
-// lots of serial data seems to crash leonardo
+// disable or bootloader timesout due to delays between prog_page
 #define VERBOSE false
 
 // wiring:
@@ -385,6 +385,7 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
 }
 
 void setup() {
+  // necessary to avoid bootloader timeouts. try faster speeds
   Serial.begin(19200);
   // leonardo wait for serial
   while (!Serial);
