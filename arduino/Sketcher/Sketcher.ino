@@ -1,17 +1,10 @@
 #include <SoftwareSerial.h>
 
-// TODO handle incomplete programming attempts
-// figure out optiboot timeout
-// send # of pages to expect in header
-// flash optiboot on arduino pros
-// buffer the pages so I can program 128 pages by collecting two 64 byte before sending
-// moteino/dual optiboot seems to take the approach of using an external flash to write the program, then the bootloader reads from ext. flash an updates program https://github.com/LowPowerLab/DualOptiboot
-// uses eeprom (soic package) http://www.digikey.com/product-detail/en/W25X40CLSNIG/W25X40CLSNIG-ND/3008652
-
-// boards.txt, baud rate, bootloader and more various boards
-// /Applications/Arduino.app//Contents/Resources/Java/hardware/arduino/boards.txt
-
 /*
+REFERENCES
+
+// moteino/dualoptiboot https://github.com/LowPowerLab/DualOptiboot
+// uses eeprom (soic package) http://www.digikey.com/product-detail/en/W25X40CLSNIG/W25X40CLSNIG-ND/3008652
 impeeduino https://github.com/electricimp/reference/tree/master/hardware/impeeduino
 socat virtual comm to socket http://stackoverflow.com/questions/22624653/create-a-virtual-serial-port-connection-over-tcp
 optiloader (bootloader in sketch) https://github.com/WestfW/OptiLoader/blob/master/optiLoader.pde
@@ -23,7 +16,6 @@ https://code.google.com/p/arduino/source/browse/trunk/hardware/arduino/bootloade
 http://www.cs.ou.edu/~fagg/classes/general/atmel/avrdude.pdf
 https://raw.githubusercontent.com/adafruit/ArduinoISP/master/ArduinoISP.ino
 http://www.atmel.com/Images/doc2525.pdf
-http://forum.arduino.cc/index.php?topic=117299.0;nowap
 */
 
 /* CONFIGURATION
@@ -41,6 +33,15 @@ Wiring: Programmer->Target
 
 // SoftSerial optional debugging
 */
+
+// TODO write program to external eeprom
+// TODO handle incomplete programming attempts
+// figure out optiboot timeout
+// send # of pages to expect in header
+// flash optiboot on arduino pros
+// boards.txt, baud rate, bootloader and more various boards
+// /Applications/Arduino.app//Contents/Resources/Java/hardware/arduino/boards.txt
+
 
 // only need 128=> + 4 bytes len/addr
 #define BUFFER_SIZE 150
