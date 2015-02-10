@@ -202,12 +202,10 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
       }
     }
     
-    //getProgrammerSerial()->write((char) command);
     getProgrammerSerial()->write(command);
 
   if (arr != NULL && len > 0) {
     for (int i = offset; i < offset + len; i++) {
-      //getProgrammerSerial()->write((char) arr[i]);
       getProgrammerSerial()->write(arr[i]);
 
 //      if (VERBOSE) {
@@ -220,7 +218,6 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
     }
   }
   
-  //getProgrammerSerial()->write((char) CRC_EOP);
   getProgrammerSerial()->write(CRC_EOP);
 //  getProgrammerSerial()->flush();
       
@@ -387,7 +384,9 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
 
 void setup() {
   // necessary to avoid bootloader timeouts. try faster speeds
-  Serial.begin(115200);
+  //Serial.begin(115200);
+  Serial.begin(19200);
+  
   // leonardo wait for serial
   while (!Serial);
   
@@ -431,17 +430,16 @@ const int PROG_PAGE = 0xa;
 
 void loop() {
   
-  int b = 0;
+  uint8_t b = 0;
 
   // each page is ctrl,len,high,low,data
-
   // receive a page at a time, ex
   // f,80,e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1f
   while (getDebugSerial()->available() > 0) {
     b = getDebugSerial()->read();
     
     if (pos == 0) {
-      // has nothing to do with programming, don't need this in buffer
+      // don't need this is buffer
       buffer[pos] = b;
             
       if (b == FIRST_PAGE) {

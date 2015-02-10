@@ -27,7 +27,8 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 	
 	final int MAX_PROGRAM_SIZE = 0x20000;
 	final int ARDUINO_PAGE_SIZE = 128;
-	final int BAUD_RATE = 115200;
+	//final int BAUD_RATE = 115200;
+	final int BAUD_RATE = 19200;
 	
 	private InputStream inputStream;
 	private SerialPort serialPort;
@@ -367,7 +368,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		// wait a few secs for leave prog mode reply
 		Thread.sleep(5000);
 		
-		System.exit(0);
+		serialPort.close();
 	}
 	
 	public static void main(String[] args) throws Exception {		
