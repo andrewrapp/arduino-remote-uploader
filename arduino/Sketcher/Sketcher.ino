@@ -1,6 +1,7 @@
 #include <SoftwareSerial.h>
 
-// this prog will fit in memory. load in memory to test 128 byte pages
+// TODO handle incomplete programming attempts
+// figure out optiboot timeout
 // send # of pages to expect in header
 // flash optiboot on arduino pros
 // buffer the pages so I can program 128 pages by collecting two 64 byte before sending
@@ -27,15 +28,15 @@ http://forum.arduino.cc/index.php?topic=117299.0;nowap
 
 /* CONFIGURATION
 
-// Arduino Programmer: Leonardo. Runs this Sketch
-// Arduino Target: Diecimila (168) with Optiboot 5.0a
+// Programmer: Arduino Leonardo. Runs this Sketch
+// Target: Arduino Diecimila (168) with Optiboot 5.0a. Could be any optiboot enabled Arduino
 
-Wiring:
+Wiring: Programmer->Target
 // GND->GND
 // 5V->5V
 // TX->RX
 // RX->TX
-// Programmer (8) -> Target (Reset)
+// Programmer (D8) -> Target (Reset)
 // Programer USB -> Host
 
 // SoftSerial optional debugging
@@ -386,7 +387,7 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
 
 void setup() {
   // necessary to avoid bootloader timeouts. try faster speeds
-  Serial.begin(19200);
+  Serial.begin(115200);
   // leonardo wait for serial
   while (!Serial);
   
@@ -452,7 +453,7 @@ void loop() {
       // length is only the data length,  so add 4 byte (ctrl, len, addr high, low)
       buffer[pos] = b + 4;
       page_len = buffer[pos];      
-      getDebugSerial()->print("page len is "); getDebugSerial()->println(b, DEC);
+      //getDebugSerial()->print("page len is "); getDebugSerial()->println(b, DEC);
     } else if (pos < page_len - 1 && prog_mode) {
       // data
       buffer[pos] = b;
@@ -517,7 +518,7 @@ void loop() {
   }
   
   // oops, got some data we are not expecting
-  if (getProgrammerSerial()->available() > 0) {
+  if (prog_mode && getProgrammerSerial()->available() > 0) {
     uint8_t ch = getProgrammerSerial()->read();
     getDebugSerial()->print("Unexpected reply @"); getDebugSerial()->print(count, DEC); getDebugSerial()->print(" "); getDebugSerial()->println(ch, HEX);
     count++;

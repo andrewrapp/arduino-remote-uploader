@@ -19,19 +19,23 @@ import java.util.TooManyListenersException;
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 
+// rename to ArduinoSketchLoader
 public class Stk500 implements SerialPortEventListener {
 
+	final int FIRST_PAGE = 0xd;
+	final int LAST_PAGE = 0xf;
+	final int PAGE_DATA = 0xa;
+	
+	final int MAX_PROGRAM_SIZE = 0x20000;
+	final int ARDUINO_PAGE_SIZE = 128;
+	
 	private InputStream inputStream;
 	private SerialPort serialPort;
     private StringBuffer strBuf = new StringBuffer();
-    private Object rxNotify = new Object();
+    private Object pageAck = new Object();
     
-	int MAX_PROGRAM_SIZE = 0x20000;
-	int ARDUINO_PAGE_SIZE = 128;
-	
 	public Stk500() {
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
-
 			@Override
 			public void run() {
 				if (serialPort != null) {
@@ -40,20 +44,20 @@ public class Stk500 implements SerialPortEventListener {
 			}}));
 	}
 	
-	public int[] process(String file) throws IOException {
-	//	    File hexFile = new File(file);
-		
-		File hexFile = new File("/Users/andrew/Documents/dev/arduino-sketch-loader/HelloTest.cpp.hex");
-	        
+	/**
+	 * Parse an intel hex file into an array of bytes
+	 * 
+	 * @param file
+	 * @return
+	 * @throws IOException
+	 */
+	public int[] parseIntelHex(String file) throws IOException {
+		File hexFile = new File(file);
+				
 		int[] program = new int[MAX_PROGRAM_SIZE];
-		
-		// init
-		for (int i = 0; i < program.length; i++) {
-			program[i] = 0;
-		}
-		
-    	// eg
-		//length = 0x10
+				
+    	// example:
+		// length = 0x10
 		// addr = 0000
 		// type = 00
 		//:100000000C94C7010C94EF010C94EF010C94EF01D8
@@ -62,8 +66,6 @@ public class Stk500 implements SerialPortEventListener {
 		
     	List<String> hex = Files.readLines(hexFile, Charset.forName("UTF-8"));
     	
-    	int maxaddress = 0;
-		int offset = 0;
 		int lineCount = 0;
 		int position = 0;
 
@@ -71,79 +73,62 @@ public class Stk500 implements SerialPortEventListener {
 
     		String dataLine = line.split(":")[1];
     		
-    		System.out.println("line: " + ++lineCount + " is " + line);
+    		System.out.println("line: " + ++lineCount + ": " + line);
 
     		int checksum = 0;
     		
     		if (line.length() > 10) {
 	    		int length = Integer.decode("0x" + dataLine.substring(0, 2));
-	    		int addr = Integer.decode("0x" + dataLine.substring(2, 6));
+	    		int address = Integer.decode("0x" + dataLine.substring(2, 6));
 	    		int type = Integer.decode("0x" + dataLine.substring(6, 8));	    			
     		
-	    		checksum += length + addr + type;
-	
-	    		if (length != 16) {
-	    			System.out.println("Length is " + length + " " + line);
-	    		}
-	    		
-	    		System.out.println("len is " + length + ", addr is " + addr + ", type is " + type);
+	    		checksum += length + address + type;
+
+	    		System.out.println("Length is " + length + ", address is " + Integer.toHexString(address) + ", type is " + Integer.toHexString(type));
 	    		
                 // Ignore all record types except 00, which is a data record. 
                 // Look out for 02 records which set the high order byte of the address space
                 if (type == 0) {
                     // Normal data record
-                } else if (type == 4 && length == 2 && addr == 0 && line.length() > 12) {
-                    // Set the offset
-                	offset = Integer.decode("0x" + dataLine.substring(8, 12)) << 16;	                	
-                    
-                	if (offset != 0) {
-                        System.out.println("Set offset to" + Integer.toHexString(offset));
-                    }
-                    continue;
+                } else if (type == 4 && length == 2 && address == 0 && line.length() > 12) {
+                	// Address > 16bit not supported by Arduino so not important
+                	throw new RuntimeException("Record type 4 is not implemented");
                 } else {
                 	System.out.println("Skipped: " + line);
                     continue;
                 }
                 
                 // verify the addr matches our current array position
-                
-                if (position > 0 && position != addr) {
-                	throw new RuntimeException("Expected address of " + position + " but was " + addr);
+                if (position > 0 && position != address) {
+                	throw new RuntimeException("Expected address of " + position + " but was " + address);
                 }
                 
-                // addr will always be last position or we'd have gaps in the array
-                position = offset + addr;
+                // address will always be last position or we'd have gaps in the array
+                position = address;
                 
-                System.out.println("Program position is " + position);
+//                System.out.println("Program position is " + position);
                 {
-                	// FIXME if there is an offset we'd be including it in the data, oops
                 	int i = 8;
 	                // data starts at 8 (4th byte) to end minus checksum
 	                for (;i < 8 + (length*2); i+=2) {
-	                    int datum = Integer.decode("0x" + dataLine.substring(i, i+2));	
-	                    
-	                    checksum+= datum;
-	                    
-//		                    System.out.println("Writing " + Integer.toHexString(datum) + " to program at i " + i);	                    
+	                    int b = Integer.decode("0x" + dataLine.substring(i, i+2));	
+	                    checksum+= b;
 	                    // what we're doing here is simply parsing the data portion of each line and adding to the array
-	                    // 
-	                    program[position] = datum;
+	                    program[position] = b;
 	                    position++;
 	                }	     
 	                
-	                System.out.println("Parse program data " + toHex(program, position - length, length));
+	                System.out.println("Program data: " + toHex(program, position - length, length));
 	                
 	                // we should be at the checksum position
 	                if (i != dataLine.length() - 2) {
 	                	throw new RuntimeException("Line length does not match expected length " + length);
 	                }
 	                
-	                // Checking the checksum would be a good idea but skipped for now
 	                int expectedChecksum = Integer.decode("0x" + line.substring(line.length() - 2, line.length()));
 	                System.out.println("Expected checksum is " + line.substring(line.length() - 2, line.length()));
 	                	                
-	                checksum = checksum & 0xff;
-	                checksum = 0xff - checksum;
+	                checksum = 0xff - checksum & 0xff;
 	                
 	                System.out.println("Checksum is " + Integer.toHexString(checksum & 0xff));
 	                
@@ -151,17 +136,12 @@ public class Stk500 implements SerialPortEventListener {
 //		                if (checksum != expectedChecksum) {
 //		                	throw new RuntimeException("Expected checksum is " + expectedChecksum + " but actual is " + checksum);
 //		                }
-                }
-
-                System.out.println("Position is " + position + ", maxaddr is " + maxaddress);
-                maxaddress = position;            
+                }  
     		}
     	}
     	
-    	System.out.println("Program size is " + maxaddress + ", array is " + program.length);
-    	
     	int[] resize = new int[position];
-    	System.arraycopy(program, 0, resize, 0, position);;
+    	System.arraycopy(program, 0, resize, 0, position);
     	
     	return resize;
 	}
@@ -205,7 +185,7 @@ public class Stk500 implements SerialPortEventListener {
     	return toHex(data, 0, data.length);
     }
     
-	public void open(String serialPortName, int speed) throws PortInUseException, IOException, UnsupportedCommOperationException, TooManyListenersException {
+	public void openSerial(String serialPortName, int speed) throws PortInUseException, IOException, UnsupportedCommOperationException, TooManyListenersException {
 		
 		CommPortIdentifier commPortIdentifier = findPort(serialPortName);
 		
@@ -255,11 +235,11 @@ public class Stk500 implements SerialPortEventListener {
   
             		   //carriage return
             		   if ((int)readBuffer[i] == 10) {         
-            			   System.out.println("Arduino out: " + strBuf.toString());
+            			   System.out.println("Arduino:<-" + strBuf.toString());
           
             			   if (strBuf.toString().equals("ok")) {
-                			   synchronized (rxNotify) {
-                				   rxNotify.notify();
+                			   synchronized (pageAck) {
+                				   pageAck.notify();
                 			   }            				   
             			   }
 
@@ -275,44 +255,30 @@ public class Stk500 implements SerialPortEventListener {
 	}
 	
 	public void write(int i) throws IOException {
-//		System.out.print(Integer.toHexString(i) + ",");
 		serialPort.getOutputStream().write(i);
 	}
 
 	class Page {
 		private int address;
-//		private List<Integer> data = Lists.newArrayList();
 		private int[] data;
-		// incl. address
+		// includes address
 		private int[] page;
 		
 		public Page(int[] program, int offset, int dataLength) {
 			super();
-			// address is simple the offset (array index)
-			
-			// tomatoless divides by 2 pline.addr <- addr / 2; // Address space is 16-bit
 			this.address = offset / 2;
-			//this.address = offset;
 			
 			int[] data = new int[dataLength];
 			System.arraycopy(program, offset, data, 0, dataLength);
-			this.data = data;
-			
-			System.out.println("data is " + toHex(data));
-			
+			this.data = data;			
 			this.page = new int[dataLength + 2];
 
 			// little endian according to avrdude
 			page[0] = this.address & 0xff;
 			// msb
 			page[1] = (this.address >> 8) & 0xff;
-			
-			System.out.println("Page lsb is " + Integer.toHexString(page[0]) + ", msb is " + Integer.toHexString(page[1]));
 
-			// copy data onto stk page
 			System.arraycopy(data, 0, page, 2, data.length);
-			
-			System.out.println("page is " + toHex(page));
 		}
 		
 		public int getAddress() {
@@ -323,15 +289,15 @@ public class Stk500 implements SerialPortEventListener {
 			return data;
 		}
 
-		// address high/low + data
+		// includes address low/high + data
 		public int[] getPage() {
 			return page;
 		}
 	}
 	
-	public List<Page> formatPages(int[] program, int pageSize) {		
+	public List<Page> processPages(int[] program) {		
 		List<Page> pages = Lists.newArrayList();		
-		System.out.println("Program length is " + program.length + ", page size is " + pageSize);
+		System.out.println("Program length is " + program.length + ", page size is " + ARDUINO_PAGE_SIZE);
 		
 		int position = 0;
 		
@@ -340,40 +306,30 @@ public class Stk500 implements SerialPortEventListener {
 			
 			int length = 0;
 			
-			if (position + pageSize < program.length) {
-				length = pageSize;
+			if (position + ARDUINO_PAGE_SIZE < program.length) {
+				length = ARDUINO_PAGE_SIZE;
 			} else {
 				length = program.length - position;
 			}
 
-			System.out.println("Creating page for " + toHex(program, position, length));
-			
+//			System.out.println("Creating page for " + toHex(program, position, length));
 			pages.add(new Page(program, position, length));
 			
 			// index to next position
 			position+=length;
 		}
 		
-		if (position != program.length) {
-			throw new RuntimeException("oops");
-		}
-		
 		return pages;
 	}
 	
-	final int FIRST_PAGE = 0xd;
-	final int LAST_PAGE = 0xf;
-	final int PAGE_DATA = 0xa;
-	
-	public void run() throws Exception {
-		int[] program = process(null);
+	public void process(String device, int baudRate, String hex) throws Exception {
+		int[] program = parseIntelHex(hex);
 		
-		List<Page> pages = formatPages(program, ARDUINO_PAGE_SIZE);
+		List<Page> pages = processPages(program);
 		
 		System.out.println("Program length is " + program.length + ", there are " + pages.size() + " pages");
 		
-		this.open("/dev/tty.usbmodemfa131", 19200);
-//		this.open("/dev/tty.usbserial-A6007nto");
+		this.openSerial(device, baudRate);
 		
 		for (int i = 0; i < pages.size(); i++) {
 			Page page = pages.get(i);
@@ -397,15 +353,13 @@ public class Stk500 implements SerialPortEventListener {
 			
 			serialPort.getOutputStream().flush();
 			
-			System.out.println("waiting for ok");
-//			// wait for reply
-			synchronized (rxNotify) {
-				rxNotify.wait();
-			}
+//			System.out.println("Waiting for ack from Arduino");
 			
-//			if (i == 0) {
-//				break;
-//			}
+//			// wait for reply
+			synchronized (pageAck) {
+				// TODO timeout
+				pageAck.wait();
+			}
 		}
 		
 		System.out.println("Java done");
@@ -416,7 +370,7 @@ public class Stk500 implements SerialPortEventListener {
 		System.exit(0);
 	}
 	
-	public static void main(String[] args) throws Exception {
-		new Stk500().run();
+	public static void main(String[] args) throws Exception {		
+		new Stk500().process(args[0], Integer.parseInt(args[1]), args[2]);
 	}
 }
