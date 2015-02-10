@@ -27,6 +27,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 	
 	final int MAX_PROGRAM_SIZE = 0x20000;
 	final int ARDUINO_PAGE_SIZE = 128;
+	final int BAUD_RATE = 115200;
 	
 	private InputStream inputStream;
 	private SerialPort serialPort;
@@ -321,14 +322,14 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		return pages;
 	}
 	
-	public void process(String device, int baudRate, String hex) throws Exception {
+	public void process(String device, String hex) throws Exception {
 		int[] program = parseIntelHex(hex);
 		
 		List<Page> pages = processPages(program);
 		
 		System.out.println("Program length is " + program.length + ", there are " + pages.size() + " pages");
 		
-		this.openSerial(device, baudRate);
+		this.openSerial(device, BAUD_RATE);
 		
 		for (int i = 0; i < pages.size(); i++) {
 			Page page = pages.get(i);
@@ -370,6 +371,6 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 	}
 	
 	public static void main(String[] args) throws Exception {		
-		new ArduinoSketchLoader().process(args[0], Integer.parseInt(args[1]), args[2]);
+		new ArduinoSketchLoader().process(args[0], args[1]);
 	}
 }

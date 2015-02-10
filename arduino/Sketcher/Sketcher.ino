@@ -421,6 +421,7 @@ void pageReset() {
 void progReset() {
   pageReset();
   prog_mode = false;
+  count = 0;
 }
 
 // first byte in packet indicates if first or last
