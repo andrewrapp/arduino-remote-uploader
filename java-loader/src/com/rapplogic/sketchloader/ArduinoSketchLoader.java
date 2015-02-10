@@ -19,8 +19,7 @@ import java.util.TooManyListenersException;
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 
-// rename to ArduinoSketchLoader
-public class Stk500 implements SerialPortEventListener {
+public class ArduinoSketchLoader implements SerialPortEventListener {
 
 	final int FIRST_PAGE = 0xd;
 	final int LAST_PAGE = 0xf;
@@ -34,7 +33,7 @@ public class Stk500 implements SerialPortEventListener {
     private StringBuffer strBuf = new StringBuffer();
     private Object pageAck = new Object();
     
-	public Stk500() {
+	public ArduinoSketchLoader() {
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
 			@Override
 			public void run() {
@@ -371,6 +370,6 @@ public class Stk500 implements SerialPortEventListener {
 	}
 	
 	public static void main(String[] args) throws Exception {		
-		new Stk500().process(args[0], Integer.parseInt(args[1]), args[2]);
+		new ArduinoSketchLoader().process(args[0], Integer.parseInt(args[1]), args[2]);
 	}
 }
