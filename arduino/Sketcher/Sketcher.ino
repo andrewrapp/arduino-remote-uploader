@@ -98,6 +98,25 @@ const int ssTx = 4;
 const int ssRx = 5;
 const int resetPin = 8;
 
+// first byte in packet indicates if first or last
+const int FIRST_PAGE = 0xd;
+const int LAST_PAGE = 0xf;
+const int PROG_PAGE = 0xa;
+
+// max time between optiboot commands before we send a noop
+const int MAX_OPTI_DELAY = 300;
+
+uint8_t page_len = 0;
+uint8_t pos = 0;
+
+int count = 0;
+bool prog_mode = false;
+bool is_first_page = false;
+bool is_last_page = false;
+bool bounced = false;
+
+long last_optiboot_cmd = 0;
+
 SoftwareSerial nss(ssTx, ssRx);
 
 Stream* getProgrammerSerial() {
@@ -180,6 +199,10 @@ void dump_buffer(uint8_t arr[], char context[], uint8_t offset, uint8_t len) {
   getDebugSerial()->flush();
 }
 
+void update_last_command() {
+  last_optiboot_cmd = millis();  
+}
+
 // Send command and buffer and return length of reply
 int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t response_length) {
 
@@ -198,6 +221,8 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
         getDebugSerial()->print("send() STK_READ_PAGE: "); getDebugSerial()->println(command, HEX);  
       } else if (command == STK_READ_SIGN) {
         getDebugSerial()->print("send() STK_READ_SIGN: "); getDebugSerial()->println(command, HEX);  
+      } else if (command == STK_GET_SYNC) {
+        getDebugSerial()->print("send() STK_GET_SYNC: "); getDebugSerial()->println(command, HEX);  
       } else {
         getDebugSerial()->print("send() unexpected command: "); getDebugSerial()->println(command, HEX);          
       }
@@ -223,8 +248,7 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
 //  getProgrammerSerial()->flush();
       
   // add 2 bytes since we always expect to get back STK_INSYNC + STK_OK
-  //int reply_len = read_response(response_length + 2, 5000);
-  int reply_len = read_response(response_length + 2, 15000);
+  int reply_len = read_response(response_length + 2, 5000);
 
   if (reply_len == -1) {
     return -1;
@@ -259,6 +283,9 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
   // zero the ok
   read_buffer[reply_len - 1] = 0;
   
+  // success update
+  update_last_command();
+  
   // return the data portion of the length
   return data_reply;
 }
@@ -271,6 +298,7 @@ void bounce() {
     delay(200);
     digitalWrite(resetPin, HIGH);
     delay(300);
+    bounced = true;
 }
 
 int initTarget() {
@@ -401,13 +429,17 @@ void setup() {
 //  nss.begin(9600);
 }
 
-uint8_t page_len = 0;
-uint8_t pos = 0;
-
-int count = 0;
-bool prog_mode = false;
-bool is_first_page = false;
-bool is_last_page = false;
+// send a noop command every MAX_OPTI_DELAY ms if we are reading a page of data or waiting for page data. this keeps optiboot from timing out
+void check_noop() {
+  if (prog_mode && bounced && millis() - last_optiboot_cmd > MAX_OPTI_DELAY) {
+    getDebugSerial()->println("noop");
+    if (send(STK_GET_SYNC, NULL, 0, 0, 0) == -1) {
+      getDebugSerial()->println("noop fail");      
+    }
+    // force update timestamp regardless of outcome
+    update_last_command();
+  }
+}
 
 // called after each page is completed
 void pageReset() {
@@ -422,12 +454,9 @@ void progReset() {
   pageReset();
   prog_mode = false;
   count = 0;
+  bounced = false;
 }
 
-// first byte in packet indicates if first or last
-const int FIRST_PAGE = 0xd;
-const int LAST_PAGE = 0xf;
-const int PROG_PAGE = 0xa;
 
 void loop() {
   
@@ -438,6 +467,8 @@ void loop() {
   // f,80,e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1f
   while (getDebugSerial()->available() > 0) {
     b = getDebugSerial()->read();
+    
+    check_noop();
     
     if (pos == 0) {
       // don't need this is buffer
@@ -516,6 +547,8 @@ void loop() {
       progReset();
     }
   }
+  
+  check_noop();
   
   // oops, got some data we are not expecting
   if (prog_mode && getProgrammerSerial()->available() > 0) {
