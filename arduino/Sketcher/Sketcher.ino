@@ -245,7 +245,8 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
   }
   
   getProgrammerSerial()->write(CRC_EOP);
-//  getProgrammerSerial()->flush();
+  // make it synchronous
+  getProgrammerSerial()->flush();
       
   // add 2 bytes since we always expect to get back STK_INSYNC + STK_OK
   int reply_len = read_response(response_length + 2, 5000);

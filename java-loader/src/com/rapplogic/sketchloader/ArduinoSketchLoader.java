@@ -350,6 +350,8 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 			
 			for (int k = 0; k < page.getPage().length; k++) {
 				write(page.getPage()[k] & 0xff);
+				// must flush after each write or usb-serial chokes randomly > 90 or so bytes
+				serialPort.getOutputStream().flush();
 			}
 			
 			serialPort.getOutputStream().flush();
