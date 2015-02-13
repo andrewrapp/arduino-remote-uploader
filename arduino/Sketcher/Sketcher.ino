@@ -1,4 +1,36 @@
-#include <SoftwareSerial.h>
+
+/* CONFIGURATION
+
+// This sketch "uploads" a sketch to a Arduino (with Optiboot) via Serial @ 115.2K
+
+// NEXT:
+//  Break sketch into two parts: receive the sketch and write to EEPROM and upload from EEPROM
+//  The first part will be specific to the wireless transport to received the sketch while the 
+//  second will work for any transport
+
+// Uploader: should be a simple function call. Returns success for an error code
+// Transporter: Define the protocol. Header: how many bytes per packet, how many packets, a checksum, retries etc
+
+// write to EEPROM starting at n+m, with header at n. Header should indicate address of program start and length
+
+// Programmer: Arduino Leonardo. Runs this Sketch
+// Target: Arduino Diecimila (168) with Optiboot 5.0a. Could be any optiboot enabled Arduino
+
+Wiring: Programmer->Target
+// GND->GND
+// 5V->5V
+// TX->RX
+// RX->TX
+// Programmer (D8) -> Target (Reset)
+// Programer USB -> Host
+*/
+
+// TODO write program to external eeprom
+// TODO handle incomplete programming attempts
+// send # of pages to expect in header
+
+// See boards.txt (/Applications/Arduino.app//Contents/Resources/Java/hardware/arduino/boards.txt)
+// for the avrdude configuration for the board/bootloader combo. This sketch only supports Optiboot targets
 
 /*
 REFERENCES
@@ -17,30 +49,6 @@ http://www.cs.ou.edu/~fagg/classes/general/atmel/avrdude.pdf
 https://raw.githubusercontent.com/adafruit/ArduinoISP/master/ArduinoISP.ino
 http://www.atmel.com/Images/doc2525.pdf
 */
-
-/* CONFIGURATION
-
-// Programmer: Arduino Leonardo. Runs this Sketch
-// Target: Arduino Diecimila (168) with Optiboot 5.0a. Could be any optiboot enabled Arduino
-
-Wiring: Programmer->Target
-// GND->GND
-// 5V->5V
-// TX->RX
-// RX->TX
-// Programmer (D8) -> Target (Reset)
-// Programer USB -> Host
-
-// SoftSerial optional debugging
-*/
-
-// TODO write program to external eeprom
-// TODO handle incomplete programming attempts
-// figure out optiboot timeout
-// send # of pages to expect in header
-// flash optiboot on arduino pros
-// boards.txt, baud rate, bootloader and more various boards
-// /Applications/Arduino.app//Contents/Resources/Java/hardware/arduino/boards.txt
 
 
 // only need 128=> + 4 bytes len/addr
@@ -117,14 +125,13 @@ bool bounced = false;
 
 long last_optiboot_cmd = 0;
 
-SoftwareSerial nss(ssTx, ssRx);
+//SoftwareSerial nss(ssTx, ssRx);
 
 Stream* getProgrammerSerial() {
   return &Serial1;
 }
 
 Stream* getDebugSerial() {
-  //nss not working
 //  return &nss;  
   return &Serial;
 }
@@ -518,6 +525,7 @@ void loop() {
       if (send_page(2, page_len - 4) != -1) {
         // send ok after each page so client knows to send another
         getDebugSerial()->println("ok");       
+        getDebugSerial()->flush();
       } else {
         getDebugSerial()->println("Send page failure"); 
         progReset();      

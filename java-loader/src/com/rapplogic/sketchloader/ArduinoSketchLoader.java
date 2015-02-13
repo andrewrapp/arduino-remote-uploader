@@ -358,7 +358,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 			
 //			System.out.println("Waiting for ack from Arduino");
 			
-//			// wait for reply
+//			// wait for reply before sending more data
 			synchronized (pageAck) {
 				// TODO timeout
 				pageAck.wait();
@@ -370,6 +370,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		// wait a few secs for leave prog mode reply
 		Thread.sleep(5000);
 		
+		// close port to 
 		serialPort.close();
 	}
 	
