@@ -22,10 +22,6 @@ const int softTxPin = 4;
 const int softRxPin = 5;
 const int resetPin = 10;
 
-bool isProgramming = false;
-long prog_start = 0;
-long last_packet = 0;
-
 //Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
 SoftwareSerial nss(softTxPin, softRxPin);
@@ -60,6 +56,25 @@ void setup() {
   getDebugSerial()->println("XAWP Ready");
 }
 
+void forwardPacket() {
+  // not programming packet, so proxy all xbee traffic to Arduino
+  // prob cleaner way to do this if I think about it some more
+  
+  // send start byte, length, api, then frame data + checksum
+  sendByte(0x7d, false);
+  sendByte(xbee.getResponse().getMsbLength(), true);
+  sendByte(xbee.getResponse().getLsbLength(), true);        
+  sendByte(xbee.getResponse().getApiId(), true);
+   
+  uint8_t* frameData = xbee.getResponse().getFrameData();
+   
+   for (int i = 0; i < xbee.getResponse().getFrameDataLength(); i++) {
+  sendByte(*(frameData + i), true);
+   }
+   
+   sendByte(xbee.getResponse().getChecksum(), true);  
+}
+
 
 // borrowed from xbee api. send bytes with proper escaping
 void sendByte(uint8_t b, bool escape) {
@@ -72,6 +87,13 @@ void sendByte(uint8_t b, bool escape) {
   
   getProgrammerSerial()->flush();
 }
+
+int packetCount = 0;
+int packets = 0;
+int size = 0;
+bool prog = false;
+long prog_start = 0;
+long last_packet = 0;
 
 void handleXBee() {
     // if programming start magic packet is received:
@@ -89,53 +111,67 @@ void handleXBee() {
       // 3 bytes for head + at least one programming
       if (rx.getDataLength() >= 4) {
         if (rx.getData(0) == MAGIC_BYTE1 && rx.getData(1) == MAGIC_BYTE2) {
-          prog = true;
           
-          if (rx.getData(2) == START_PROGRAMMING) {
+          if (rx.getData(2) == 0x10) {
+           // start
+
             getDebugSerial()->println("Received programming start packet");
             
-            if (isProgramming) {
+            if (prog) {
               getDebugSerial()->println("Error: never received programming stop packet"); 
             }
+
+             // tell Arduino it's about to be flashed
+              // forwardPacket();
             
             prog_start = millis();
-            isProgramming = true;
-          } else if (rx.getData(2) == PROGRAM_DATA) {
-            int offset = 3;
+            prog = true; 
+            
+            // size in bytes
+            size = rx.getData(3) << 8 + rx.getData(4);
+            // num packets to be sent
+            packets = rx.getData(5) << 8 + rx.getData(6);            
+          } else if (rx.getData(2) == 0x20 && prog) {
+            packetCount++;
             
             // write to eeprom
-            for (int i = offset; i < rx.getDataLength(); i++) {
+            for (int i = 7; i < rx.getDataLength(); i++) {
               //rx.getData(i)
-            }             
-          } else if (rx.getData(2) == STOP_PROGRAMMING) {
-            getDebugSerial()->println("Received programming stop packet");
+            }  
+            
+            if (packetCount == packets) {
+              // last packet
+              
             // done do any verification and reply back
             // call function to read from eeprom and flash
             
-            isProgramming = false;
+              // start flashing
+              
+              
+              
+              
+              
+              prog = false;
+            } else if (packetCount > packets) {
+              // error
+            }
+            
+            // prog data
+          } else if (rx.getData(2) == 0x40 && prog) {
+            // done verify we got expected # packets
+            getDebugSerial()->println("Received programming stop packet");            
+            prog = false;
+          } else {
+            // sync error, not expecting prog data
+            
           }
         }
         
         last_packet = millis();
       }
       
-      if (isProgramming == false) {
-        // not programming packet, so proxy all xbee traffic to Arduino
-        // prob cleaner way to do this if I think about it some more
-
-        // send start byte, length, api, then frame data + checksum
-        sendByte(0x7d, false);
-        sendByte(xbee.getResponse().getMsbLength(), true);
-        sendByte(xbee.getResponse().getLsbLength(), true);        
-        sendByte(xbee.getResponse().getApiId(), true);
-       
-        uint8_t* frameData = xbee.getResponse().getFrameData();
-       
-         for (int i = 0; i < xbee.getResponse().getFrameDataLength(); i++) {
-          sendByte(*(frameData + i), true);
-         }
-       
-         sendByte(xbee.getResponse().getChecksum(), true);
+      if (prog == false) {
+        forwardPacket();
       }
     }  
 }
@@ -153,13 +189,16 @@ void loop() {
     getDebugSerial()->println(xbee.getResponse().getErrorCode(), DEC);
   }  
   
-  if (isProgramming && millis() - last_packet > 5000) {
+  if (prog && millis() - last_packet > 5000) {
     // timeout
-    isProgramming = false;
+    getDebugSerial()->println("Programming timeout");    
+    prog = false;
     // clear eeprom
   }
   
-  if (isProgramming == false) {
+  if (prog == false) {
+    // check if this has magic bytes before forwarding
+    
     // pass all data (xbee packets) from remote out the xbee serial port
     // we don't need to do anything with these packets
     while (getProgrammerSerial()->available() > 0) {

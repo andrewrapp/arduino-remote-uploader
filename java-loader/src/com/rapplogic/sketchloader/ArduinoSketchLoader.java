@@ -282,8 +282,9 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		private int[] data;
 		// includes address
 		private int[] page;
+		private int ordinal;
 		
-		public Page(int[] program, int offset, int dataLength) {
+		public Page(int[] program, int offset, int dataLength, int ordinal) {
 			super();
 			this.address = offset / 2;
 			
@@ -298,6 +299,8 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 			page[1] = (this.address >> 8) & 0xff;
 
 			System.arraycopy(data, 0, page, 2, data.length);
+			
+			this.ordinal = ordinal;
 		}
 		
 		public int getAddress() {
@@ -312,6 +315,10 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		public int[] getPage() {
 			return page;
 		}
+
+		public int getOrdinal() {
+			return ordinal;
+		}
 	}
 	
 	public Sketch getSketch(String fileName, int pageSize) throws IOException {	
@@ -322,7 +329,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		System.out.println("Program length is " + program.length + ", page size is " + pageSize);
 		
 		int position = 0;
-		
+		int count = 0;
 		// write the program to the arduino in chunks of ARDUINO_BLOB_SIZE
 		while (position < program.length) {
 			
@@ -335,10 +342,11 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 			}
 
 //			System.out.println("Creating page for " + toHex(program, position, length));
-			pages.add(new Page(program, position, length));
+			pages.add(new Page(program, position, length, count));
 			
 			// index to next position
 			position+=length;
+			count++;
 		}
 		
 		return new Sketch(program.length, pages);
