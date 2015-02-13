@@ -55,7 +55,12 @@
 			<groupId>com.google.guava</groupId>
 			<artifactId>guava</artifactId>
 			<version>18.0</version>
-		</dependency>			    
+		</dependency>	
+		<dependency>
+    		<groupId>com.rapplogic</groupId>
+    		<artifactId>xbeeapi</artifactId>
+    		<version>0.9.1-SNAPSHOT</version>
+		</dependency>				    
 		<dependency>
 			<groupId>log4j</groupId>
 			<artifactId>log4j</artifactId>

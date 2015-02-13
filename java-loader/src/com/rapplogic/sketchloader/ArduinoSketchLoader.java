@@ -259,6 +259,24 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		serialPort.getOutputStream().write(i);
 	}
 
+	class Sketch {
+		private List<Page> pages;
+		private int size;
+		
+		public Sketch(int size, List<Page> pages) {
+			this.size = size;
+			this.pages = pages;
+		}
+
+		public List<Page> getPages() {
+			return pages;
+		}
+
+		public int getSize() {
+			return size;
+		}
+	}
+	
 	class Page {
 		private int address;
 		private int[] data;
@@ -296,9 +314,12 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		}
 	}
 	
-	public List<Page> processPages(int[] program) {		
+	public Sketch getSketch(String fileName, int pageSize) throws IOException {	
+		
+		int[] program = parseIntelHex(fileName);
+		
 		List<Page> pages = Lists.newArrayList();		
-		System.out.println("Program length is " + program.length + ", page size is " + ARDUINO_PAGE_SIZE);
+		System.out.println("Program length is " + program.length + ", page size is " + pageSize);
 		
 		int position = 0;
 		
@@ -307,8 +328,8 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 			
 			int length = 0;
 			
-			if (position + ARDUINO_PAGE_SIZE < program.length) {
-				length = ARDUINO_PAGE_SIZE;
+			if (position + pageSize < program.length) {
+				length = pageSize;
 			} else {
 				length = program.length - position;
 			}
@@ -320,26 +341,30 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 			position+=length;
 		}
 		
-		return pages;
+		return new Sketch(program.length, pages);
 	}
 	
+//	protected Sketch getSketch(String fileName, int pageSize) throws IOException {
+//		return processPages(fileName, pageSize);		
+//	}
+	
 	public void process(String device, String hex) throws Exception {
+
 		int[] program = parseIntelHex(hex);
+		Sketch sketch = getSketch(hex, ARDUINO_PAGE_SIZE);	
 		
-		List<Page> pages = processPages(program);
-		
-		System.out.println("Program length is " + program.length + ", there are " + pages.size() + " pages");
+		System.out.println("Program length is " + program.length + ", there are " + sketch.getSize() + " pages");
 		
 		this.openSerial(device, BAUD_RATE);
 		
-		for (int i = 0; i < pages.size(); i++) {
-			Page page = pages.get(i);
+		for (int i = 0; i < sketch.getPages().size(); i++) {
+			Page page = sketch.getPages().get(i);
 			
-			System.out.println("Sending page " + (i + 1) + " of " + pages.size() + ", length is " + page.getData().length + ", address is " + Integer.toHexString(page.getAddress()) + ", page is " + toHex(page.getPage()));
+			System.out.println("Sending page " + (i + 1) + " of " + sketch.getSize() + ", length is " + page.getData().length + ", address is " + Integer.toHexString(page.getAddress()) + ", page is " + toHex(page.getPage()));
 
 			if (i == 0) {
 				write(FIRST_PAGE);
-			} else if (i == pages.size() - 1) {
+			} else if (i == sketch.getPages().size() - 1) {
 				write(LAST_PAGE);
 			} else {
 				write(PAGE_DATA);
