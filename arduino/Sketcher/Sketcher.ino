@@ -106,6 +106,8 @@ const int ssTx = 4;
 const int ssRx = 5;
 const int resetPin = 8;
 
+const int PROG_PAGE_RETRIES = 2;
+
 // first byte in packet indicates if first or last
 const int FIRST_PAGE = 0xd;
 const int LAST_PAGE = 0xf;
@@ -367,56 +369,75 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     // ctrl,len,addr high/low
     // address is byte index 2,3
     
-    // [55] . [00] . [00] 
-    if (send(STK_LOAD_ADDRESS, buffer, addr_offset, 2, 0) == -1) {
-      getDebugSerial()->println("load addr failed");
-      return -1;
-    }
-     
-    // [64] . [00] . [80] F [46] . [0c] .
-    
-    // rewrite buffer to make things easier
-    // data starts at addr_offset + 2
-    // format of prog_page is 0x00, data_len, 0x46, [data]
-    buffer[addr_offset - 1] = 0;
-    buffer[addr_offset] = data_len;
-    buffer[addr_offset + 1] = 0x46;
-    //remaining buffer is data
-    
-    // add 3 to data_len for above bytes and send
-    if (send(STK_PROG_PAGE, buffer, addr_offset - 1, data_len + 3, 0) == -1) {
-      getDebugSerial()->println("page page failed");
-      return -1;       
-    }
-
-    uint8_t reply_len = send(STK_READ_PAGE, buffer, addr_offset - 1, 3, data_len);
-    
-    if (reply_len == -1) {
-      getDebugSerial()->println("Read page failure");
-      return -1;
-    }
-    
-    if (reply_len != data_len) {
-      getDebugSerial()->println("Error: read len does not match data len");
-      return -1;
-    }
-    
-    bool verified = true;
-    
-    // TODO we can compute checksum on buffer, reset and use for the read buffer!!!!!!!!!!!!!!!
-    
-    if (VERBOSE) {
-      getDebugSerial()->print("reply_len is "); getDebugSerial()->println(reply_len, DEC);      
-    }
-      
-    for (int i = 0; i < reply_len; i++) {        
-      if (read_buffer[i] != buffer[addr_offset + 2 + i]) {
-        getDebugSerial()->print("Error: reply buffer does not match write buffer at "); getDebugSerial()->println(i, DEC);
+    // retry up to 2 times
+    for (int z = 0; z < PROG_PAGE_RETRIES + 1; z++) {
+      // [55] . [00] . [00] 
+      if (send(STK_LOAD_ADDRESS, buffer, addr_offset, 2, 0) == -1) {
+        getDebugSerial()->println("Load address failed");
         return -1;
       }
+       
+      // [64] . [00] . [80] F [46] . [0c] .
+      
+      // rewrite buffer to make things easier
+      // data starts at addr_offset + 2
+      // format of prog_page is 0x00, data_len, 0x46, [data]
+      buffer[addr_offset - 1] = 0;
+      buffer[addr_offset] = data_len;
+      buffer[addr_offset + 1] = 0x46;
+      //remaining buffer is data
+      
+      // add 3 to data_len for above bytes and send
+      if (send(STK_PROG_PAGE, buffer, addr_offset - 1, data_len + 3, 0) == -1) {
+        getDebugSerial()->println("Prog page failed");
+        return -1;
+      }
+  
+      uint8_t reply_len = send(STK_READ_PAGE, buffer, addr_offset - 1, 3, data_len);
+      
+      if (reply_len == -1) {
+        getDebugSerial()->println("Read page failure");
+        return -1;
+      }
+      
+      if (reply_len != data_len) {
+        getDebugSerial()->println("Read page length does not match");
+        return -1;
+      }
+      
+      // TODO we can compute checksum on buffer, reset and use for the read buffer!!!!!!!!!!!!!!!
+      
+      if (VERBOSE) {
+        getDebugSerial()->print("Read page length is "); getDebugSerial()->println(reply_len, DEC);      
+      }
+      
+      bool verified = true;
+      
+      // verify each byte written matches what is returned by bootloader
+      for (int i = 0; i < reply_len; i++) {        
+        if (read_buffer[i] != buffer[addr_offset + 2 + i]) {
+          getDebugSerial()->print("Read page does not match write buffer at position "); getDebugSerial()->println(i, DEC);
+          verified = false;
+          break;
+        }
+      }
+      
+      if (!verified) {
+        // retry is still attempts remaining
+        if (z < PROG_PAGE_RETRIES) {
+          getDebugSerial()->println("Failed to verify page.. retrying");
+        } else {
+          getDebugSerial()->println("Failed to verify page");
+        }
+
+        continue;
+      }
+      
+      return 0;      
     }
     
-    return 0;
+  // read verify failure
+  return -1;
 }
 
 void setup() {
