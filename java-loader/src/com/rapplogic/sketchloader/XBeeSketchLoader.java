@@ -46,7 +46,8 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			for (Page page : sketch.getPages()) {
 				// send to radio, one page at a time
 				// TODO handle errors and retries
-				xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, combine(new int[] {MAGIC_BYTE1, MAGIC_BYTE2, CONTROL_PROG_DATA}, page.getData())));
+				// send address since so we know where to write this in the eeprom
+				xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, combine(new int[] {MAGIC_BYTE1, MAGIC_BYTE2, CONTROL_PROG_DATA, (page.getAddress() >> 8) & 0xff, page.getAddress() & 0xff }, page.getData())));
 				System.out.print("#");
 			}
 

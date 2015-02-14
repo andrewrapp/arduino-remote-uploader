@@ -361,14 +361,14 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		int[] program = parseIntelHex(hex);
 		Sketch sketch = getSketch(hex, ARDUINO_PAGE_SIZE);	
 		
-		System.out.println("Program length is " + program.length + ", there are " + sketch.getSize() + " pages");
+		System.out.println("Program length is " + program.length + ", there are " + sketch.getPages().size() + " pages");
 		
 		this.openSerial(device, BAUD_RATE);
 		
 		for (int i = 0; i < sketch.getPages().size(); i++) {
 			Page page = sketch.getPages().get(i);
 			
-			System.out.println("Sending page " + (i + 1) + " of " + sketch.getSize() + ", length is " + page.getData().length + ", address is " + Integer.toHexString(page.getAddress()) + ", page is " + toHex(page.getPage()));
+			System.out.println("Sending page " + (i + 1) + " of " + sketch.getPages().size() + ", length is " + page.getData().length + ", address is " + Integer.toHexString(page.getAddress()) + ", page is " + toHex(page.getPage()));
 
 			if (i == 0) {
 				write(FIRST_PAGE);
