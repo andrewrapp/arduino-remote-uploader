@@ -18,9 +18,24 @@ ZBRxResponse rx = ZBRxResponse();
 // another configuration that might works is the target has the wireless connection. it writes to the eeprom then tells it's friend to program it
 // can two devices connect to the same i2c device
 
+
 const int softTxPin = 4;
 const int softRxPin = 5;
 const int resetPin = 10;
+
+
+/*
+Microchip 24LC256
+Arduino Analog pin 4 - SDA - EEPROM pin 5
+Arduino Analog pin 5 - SCL - EEPROM pin 6
+Arduino 5V           - VCC - EEPROM pin 8
+Arduino GND          - VSS - EEPROM pin 4 
+
+* pin 1 is has the dot, on the notched end, if you were wondering
+
+Pin 1,2,3 of the eeprom must be connect to GND too unless other address is used, see datasheet. Pin 7 (write protect) should also be connected to GND
+*/
+
 
 //Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device

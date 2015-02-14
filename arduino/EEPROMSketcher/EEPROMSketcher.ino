@@ -1,58 +1,6 @@
 #include <Wire.h>
-
 #include <extEEPROM.h>
 
-
-/* CONFIGURATION
-
-// This sketch "uploads" a sketch to a Arduino (with Optiboot) via Serial @ 115.2K
-
-// NEXT:
-//  Break sketch into two parts: receive the sketch and write to EEPROM and upload from EEPROM
-//  The first part will be specific to the wireless transport to received the sketch while the 
-//  second will work for any transport
-
-// Uploader: should be a simple function call. Returns success for an error code
-// Transporter: Define the protocol. Header: how many bytes per packet, how many packets, a checksum, retries etc
-
-// write to EEPROM starting at n+m, with header at n. Header should indicate address of program start and length
-
-// Programmer: Arduino Leonardo. Runs this Sketch
-// Target: Arduino Diecimila (168) with Optiboot 5.0a. Could be any optiboot enabled Arduino
-
-Wiring: Programmer->Target
-// GND->GND
-// 5V->5V
-// TX->RX
-// RX->TX
-// Programmer (D8) -> Target (Reset)
-// Programer USB -> Host
-*/
-
-// TODO write program to external eeprom
-// TODO handle incomplete programming attempts
-// send # of pages to expect in header
-
-// See boards.txt (/Applications/Arduino.app//Contents/Resources/Java/hardware/arduino/boards.txt)
-// for the avrdude configuration for the board/bootloader combo. This sketch only supports Optiboot targets
-
-/*
-REFERENCES
-
-// moteino/dualoptiboot https://github.com/LowPowerLab/DualOptiboot
-// uses eeprom (soic package) http://www.digikey.com/product-detail/en/W25X40CLSNIG/W25X40CLSNIG-ND/3008652
-impeeduino https://github.com/electricimp/reference/tree/master/hardware/impeeduino
-socat virtual comm to socket http://stackoverflow.com/questions/22624653/create-a-virtual-serial-port-connection-over-tcp
-optiloader (bootloader in sketch) https://github.com/WestfW/OptiLoader/blob/master/optiLoader.pde
-adafruit optiloader https://github.com/adafruit/Standalone-Arduino-AVR-ISP-programmer
-bootloader tips http://stackoverflow.com/questions/3652233/arduino-bootloader
-sparkfun imp https://learn.sparkfun.com/tutorials/wireless-arduino-programming-with-electric-imp
-intel hex http://en.wikipedia.org/wiki/Intel_HEX
-https://code.google.com/p/arduino/source/browse/trunk/hardware/arduino/bootloaders/atmega/ATmegaBOOT_168.c
-http://www.cs.ou.edu/~fagg/classes/general/atmel/avrdude.pdf
-https://raw.githubusercontent.com/adafruit/ArduinoISP/master/ArduinoISP.ino
-http://www.atmel.com/Images/doc2525.pdf
-*/
 
 
 // only need 128=> + 4 bytes len/addr
@@ -99,13 +47,12 @@ http://www.atmel.com/Images/doc2525.pdf
 #define STK_READ_OSCCAL_EXT 0x78  // 'x'
 
 uint8_t cmd_buffer[1];
+uint8_t addr[2];
 uint8_t buffer[BUFFER_SIZE];
 uint8_t read_buffer[READ_BUFFER_SIZE];
 
 // disable or bootloader timesout due to delays between prog_page
-#define VERBOSE true
-
-extEEPROM eeprom(kbits_256, 1, 64);
+#define VERBOSE false
 
 // wiring:
 const int ssTx = 4;
@@ -133,6 +80,8 @@ bool bounced = false;
 
 long last_optiboot_cmd = 0;
 
+extEEPROM eeprom(kbits_256, 1, 64);
+  
 //SoftwareSerial nss(ssTx, ssRx);
 
 Stream* getProgrammerSerial() {
@@ -219,7 +168,7 @@ void update_last_command() {
 }
 
 // Send command and buffer and return length of reply
-int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t response_length) {
+int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
 
     if (VERBOSE) {
       if (command == STK_GET_PARAMETER) {
@@ -246,7 +195,7 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
     getProgrammerSerial()->write(command);
 
   if (arr != NULL && len > 0) {
-    for (int i = offset; i < offset + len; i++) {
+    for (int i = 0; i < len; i++) {
       getProgrammerSerial()->write(arr[i]);
 
 //      if (VERBOSE) {
@@ -255,7 +204,7 @@ int send(uint8_t command, uint8_t arr[], uint8_t offset, uint8_t len, uint8_t re
     }
     
     if (VERBOSE) {
-      dump_buffer(arr, "send()->", offset, len);
+      dump_buffer(arr, "send()->", 0, len);
     }
   }
   
@@ -324,7 +273,7 @@ int initTarget() {
     
     // Check everything we can check to ensure we are speaking to the correct boot loader
     cmd_buffer[0] = 0x81;
-    data_len = send(STK_GET_PARAMETER, cmd_buffer, 0, 1, 1);
+    data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
     
     if (data_len == -1) {
      return -1;   
@@ -333,7 +282,7 @@ int initTarget() {
     getDebugSerial()->print("Firmware version is "); getDebugSerial()->println(read_buffer[0], HEX);
     
     cmd_buffer[0] = 0x82;
-    data_len = send(STK_GET_PARAMETER, cmd_buffer, 0, 1, 1);
+    data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
 
     if (data_len == -1) {
      return -1;   
@@ -343,7 +292,7 @@ int initTarget() {
     
     // this not a valid command. optiboot will send back 0x3 for anything it doesn't understand
     cmd_buffer[0] = 0x83;
-    data_len = send(STK_GET_PARAMETER, cmd_buffer, 0, 1, 1);
+    data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
     
     if (data_len == -1) {
       return -1;   
@@ -352,7 +301,7 @@ int initTarget() {
       return -1;
     }
 
-    data_len = send(STK_READ_SIGN, NULL, 0, 0, 3);
+    data_len = send(STK_READ_SIGN, NULL, 0, 3);
     
     if (data_len != 3) {      
       return -1;      
@@ -371,14 +320,17 @@ int initTarget() {
     return 0;
 }
 
-int send_page(uint8_t addr_offset, uint8_t data_len) {    
+// need 3 bytes for prog_page
+// data must start at position 3
+int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {    
     // ctrl,len,addr high/low
     // address is byte index 2,3
     
     // retry up to 2 times
-    for (int z = 0; z < PROG_PAGE_RETRIES + 1; z++) {
+    // disable retries for debugging
+    //for (int z = 0; z < PROG_PAGE_RETRIES + 1; z++) {
       // [55] . [00] . [00] 
-      if (send(STK_LOAD_ADDRESS, buffer, addr_offset, 2, 0) == -1) {
+      if (send(STK_LOAD_ADDRESS, addr, 2, 0) == -1) {
         getDebugSerial()->println("Load address failed");
         return -1;
       }
@@ -388,18 +340,18 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
       // rewrite buffer to make things easier
       // data starts at addr_offset + 2
       // format of prog_page is 0x00, data_len, 0x46, [data]
-      buffer[addr_offset - 1] = 0;
-      buffer[addr_offset] = data_len;
-      buffer[addr_offset + 1] = 0x46;
+      buffer[0] = 0;
+      buffer[1] = data_len;
+      buffer[2] = 0x46;
       //remaining buffer is data
       
-      // add 3 to data_len for above bytes and send
-      if (send(STK_PROG_PAGE, buffer, addr_offset - 1, data_len + 3, 0) == -1) {
+      // add 3 to data_len
+      if (send(STK_PROG_PAGE, buffer, data_len + 3, 0) == -1) {
         getDebugSerial()->println("Prog page failed");
         return -1;
       }
   
-      uint8_t reply_len = send(STK_READ_PAGE, buffer, addr_offset - 1, 3, data_len);
+      uint8_t reply_len = send(STK_READ_PAGE, buffer, 3, data_len);
       
       if (reply_len == -1) {
         getDebugSerial()->println("Read page failure");
@@ -421,7 +373,7 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
       
       // verify each byte written matches what is returned by bootloader
       for (int i = 0; i < reply_len; i++) {        
-        if (read_buffer[i] != buffer[addr_offset + 2 + i]) {
+        if (read_buffer[i] != buffer[i + 3]) {
           getDebugSerial()->print("Read page does not match write buffer at position "); getDebugSerial()->println(i, DEC);
           verified = false;
           break;
@@ -430,24 +382,27 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
       
       if (!verified) {
         // retry is still attempts remaining
-        if (z < PROG_PAGE_RETRIES) {
-          getDebugSerial()->println("Failed to verify page.. retrying");
-        } else {
+        //if (z < PROG_PAGE_RETRIES) {
+        //  getDebugSerial()->println("Failed to verify page.. retrying");
+        //} else {
           getDebugSerial()->println("Failed to verify page");
-        }
-
-        continue;
+        //}
+        
+        // disable retries
+        return -1;
+        //continue;
       }
       
       return 0;      
-    }
+    //}
     
   // read verify failure
   return -1;
 }
 
 void setup() {
-  // can be slower but bootloader may timeout
+  // necessary to avoid bootloader timeouts. try faster speeds
+  //Serial.begin(115200);
   Serial.begin(19200);
   
   // leonardo wait for serial
@@ -459,25 +414,10 @@ void setup() {
   //diecimilao.upload.speed=115200
   // configure serial for bootloader baud rate  
   Serial1.begin(115200);
-
-// TODO REMOVE!
+  
   if (eeprom.begin(twiClock400kHz) != 0) {
     getDebugSerial()->println("eeprom failure");
     return;  
-  }
-  
-//  nss.begin(9600);
-}
-
-// send a noop command every MAX_OPTI_DELAY ms if we are reading a page of data or waiting for page data. this keeps optiboot from timing out
-void check_noop() {
-  if (prog_mode && bounced && millis() - last_optiboot_cmd > MAX_OPTI_DELAY) {
-    getDebugSerial()->println("noop");
-    if (send(STK_GET_SYNC, NULL, 0, 0, 0) == -1) {
-      getDebugSerial()->println("noop fail");      
-    }
-    // force update timestamp regardless of outcome
-    update_last_command();
   }
 }
 
@@ -497,6 +437,17 @@ void progReset() {
   bounced = false;
 }
 
+const int start_address = 16;
+int last_write_address = start_address;
+
+int eeprom_write(uint8_t *buf, int len) {
+  //don't forget to divide by 2 when sending load address!
+  getDebugSerial()->print("Writing to eeprom at adddress: "); getDebugSerial()->print(last_write_address, DEC); getDebugSerial()->print(", length: "); getDebugSerial()->println(len, DEC);
+  int ok = eeprom.write(last_write_address, buf, len);
+  last_write_address+= len;
+
+  return ok;
+}
 
 void loop() {
   
@@ -507,8 +458,6 @@ void loop() {
   // f,80,e,94,9c,7,8,95,fc,1,16,82,17,82,10,86,11,86,12,86,13,86,14,82,34,96,bf,1,e,94,bd,7,8,95,dc,1,68,38,10,f0,68,58,29,c0,e6,2f,f0,e0,67,ff,13,c0,e0,58,f0,40,81,e0,90,e0,2,c0,88,f,99,1f
   while (getDebugSerial()->available() > 0) {
     b = getDebugSerial()->read();
-    
-    check_noop();
     
     if (pos == 0) {
       // don't need this is buffer
@@ -533,48 +482,93 @@ void loop() {
       buffer[pos] = b;
       
       if (is_first_page) {
-        // first page, reset the target and perform check
-        bounce();
-        
-        if (initTarget() != 0) {
-          getDebugSerial()->println("Check failed!"); 
-          progReset();
-          continue;
-        } 
-        
-        if (send(STK_ENTER_PROGMODE, buffer, 0, 0, 0) == -1) {
-          getDebugSerial()->println("STK_ENTER_PROGMODE failure");
-          progReset();
-          continue;            
-        }        
+        // first page, reset the target and perform check      
       }
       
-      if (VERBOSE) {
-        dump_buffer(buffer, "prog_page", 0, page_len);        
-      }
-      
-      // substraact 4 since we don't send our header bytes to the bootloader
-      if (send_page(2, page_len - 4) != -1) {
-        // send ok after each page so client knows to send another
-        getDebugSerial()->println("ok");       
-        getDebugSerial()->flush();
-      } else {
-        getDebugSerial()->println("Send page failure"); 
-        progReset();      
-        continue;         
+      //dump_buffer(buffer, "eeprom write", 4, page_len - 4);
+
+      // substract 4 since we don't send our header bytes to the bootloader        
+      // skip address and just write data to eeprom
+      if (eeprom_write(buffer + 4, page_len - 4) != 0) {
+        getDebugSerial()->println("eeprom write fail");
+        return;        
       }
       
       if (is_last_page) {
-        // done. leave prog mode
-        if (send(STK_LEAVE_PROGMODE, buffer, 0, 0, 0) == -1) {
+        // now read from eeprom and program
+        getDebugSerial()->println("Programming arduino from eeprom...");
+        
+        bounce();
+
+        if (initTarget() != 0) {
+          getDebugSerial()->println("Check failed!"); 
+          progReset();
+          return;
+        } 
+        
+        if (send(STK_ENTER_PROGMODE, buffer, 0, 0) == -1) {
+          getDebugSerial()->println("STK_ENTER_PROGMODE failure");
+          progReset();
+          return;
+        }    
+        
+        int current_address = start_address;
+        
+        while (current_address < last_write_address) {
+          int len = 0;
+          
+          if (last_write_address - current_address < 128) {
+            len = last_write_address - current_address;
+          } else {
+            len = 128;
+          }
+          
+          if (VERBOSE) {
+            getDebugSerial()->print("EEPROM read at address "); getDebugSerial()->print(current_address, DEC); getDebugSerial()->print(" len is "); getDebugSerial()->println(len, DEC);            
+          }
+
+           
+          // skip 2 so we leave room for the prog_page command
+          int ok = eeprom.read(current_address, buffer + 3, len);
+          
+          if (ok != 0) {
+            getDebugSerial()->println("EEPROM read fail");
+            return;
+          }
+          
+          // set laod address little endian
+          // gotta divide by 2
+          addr[0] = ((current_address - start_address) / 2) & 0xff;
+          addr[1] = (((current_address - start_address) / 2) >> 8) & 0xff;
+          
+          if (VERBOSE) {
+            getDebugSerial()->print("Sending page len: "); getDebugSerial()->println(len, DEC);            
+            dump_buffer(buffer + 3, "read from eeprom->", 0, len);
+          }
+                        
+          // flash
+          if (send_page(addr, buffer, len) == -1) {
+            getDebugSerial()->println("Send page fail");
+            return;
+          }
+          
+          current_address+= len;
+        }
+
+        if (send(STK_LEAVE_PROGMODE, buffer, 0, 0) == -1) {
           getDebugSerial()->println("STK_LEAVE_PROGMODE failure");
           progReset();
-          continue;            
+          return;            
         }
+        
+        getDebugSerial()->println("Completed programming");
+        getDebugSerial()->println("ok");
         
         progReset();      
         continue; 
       } else {
+        getDebugSerial()->println("ok");
+              
         pageReset();  
         continue;      
       }
@@ -588,8 +582,6 @@ void loop() {
       progReset();
     }
   }
-  
-  check_noop();
   
   // oops, got some data we are not expecting
   if (prog_mode && getProgrammerSerial()->available() > 0) {
