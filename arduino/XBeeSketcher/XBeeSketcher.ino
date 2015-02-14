@@ -1,5 +1,50 @@
+#include <Wire.h>
+#include <extEEPROM.h>
 #include <SoftwareSerial.h>
 #include <XBee.h>
+
+// only need 128=> + 4 bytes len/addr
+#define BUFFER_SIZE 150
+#define READ_BUFFER_SIZE 150
+
+#define STK_OK              0x10
+#define STK_FAILED          0x11  // Not used
+#define STK_UNKNOWN         0x12  // Not used
+#define STK_NODEVICE        0x13  // Not used
+#define STK_INSYNC          0x14  // ' '
+#define STK_NOSYNC          0x15  // Not used
+#define ADC_CHANNEL_ERROR   0x16  // Not used
+#define ADC_MEASURE_OK      0x17  // Not used
+#define PWM_CHANNEL_ERROR   0x18  // Not used
+#define PWM_ADJUST_OK       0x19  // Not used
+#define CRC_EOP             0x20  // 'SPACE'
+#define STK_GET_SYNC        0x30  // '0'
+#define STK_GET_SIGN_ON     0x31  // '1'
+#define STK_SET_PARAMETER   0x40  // '@'
+#define STK_GET_PARAMETER   0x41  // 'A'
+#define STK_SET_DEVICE      0x42  // 'B'
+#define STK_SET_DEVICE_EXT  0x45  // 'E'
+#define STK_ENTER_PROGMODE  0x50  // 'P'
+#define STK_LEAVE_PROGMODE  0x51  // 'Q'
+#define STK_CHIP_ERASE      0x52  // 'R'
+#define STK_CHECK_AUTOINC   0x53  // 'S'
+#define STK_LOAD_ADDRESS    0x55  // 'U'
+#define STK_UNIVERSAL       0x56  // 'V'
+#define STK_PROG_FLASH      0x60  // '`'
+#define STK_PROG_DATA       0x61  // 'a'
+#define STK_PROG_FUSE       0x62  // 'b'
+#define STK_PROG_LOCK       0x63  // 'c'
+#define STK_PROG_PAGE       0x64  // 'd'
+#define STK_PROG_FUSE_EXT   0x65  // 'e'
+#define STK_READ_FLASH      0x70  // 'p'
+#define STK_READ_DATA       0x71  // 'q'
+#define STK_READ_FUSE       0x72  // 'r'
+#define STK_READ_LOCK       0x73  // 's'
+#define STK_READ_PAGE       0x74  // 't'
+#define STK_READ_SIGN       0x75  // 'u'
+#define STK_READ_OSCCAL     0x76  // 'v'
+#define STK_READ_FUSE_EXT   0x77  // 'w'
+#define STK_READ_OSCCAL_EXT 0x78  // 'x'
 
 #define MAGIC_BYTE1 0xef
 #define MAGIC_BYTE2 0xac
@@ -8,38 +53,70 @@
 #define PROGRAM_DATA 0xa1
 #define STOP_PROGRAMMING 0xa2
 
-XBee xbee = XBee();
-XBeeResponse response = XBeeResponse();
-ZBRxResponse rx = ZBRxResponse();
+#define CONTROL_PROG_REQUEST 0x10
+#define CONTROL_PROG_DATA 0x20
+#define CONTROL_FLASH_START 0x40
+
+// disable or bootloader timesout due to delays between prog_page
+#define VERBOSE false
 
 // WIRING:
 // gotta use XBee with softserial since the serial port is needed for loading the sketch. optiboot needs 115.2 so softserial is not an option
 
-// another configuration that might works is the target has the wireless connection. it writes to the eeprom then tells it's friend to program it
-// can two devices connect to the same i2c device
-
+// another configuration that might work if the target is wired to the radio: it writes to the eeprom then tells it's friend to program it. this only works if two arduinos can be on the same i2c bus
 
 const int softTxPin = 4;
 const int softRxPin = 5;
 const int resetPin = 10;
 
+const int PROG_PAGE_RETRIES = 2;
+const int EEPROM_OFFSET_ADDRESS = 16;
+// max time between optiboot commands before we send a noop.. not so relevant when using eeprom
+const int MAX_OPTI_DELAY = 300;
+const long XBEE_TIMEOUT = 5000;
+
+XBee xbee = XBee();
+XBeeResponse response = XBeeResponse();
+ZBRxResponse rx = ZBRxResponse();
+
+uint8_t cmd_buffer[1];
+uint8_t addr[2];
+uint8_t buffer[BUFFER_SIZE];
+uint8_t read_buffer[READ_BUFFER_SIZE];
+
+long last_optiboot_cmd = 0;
+int packet_count = 0;
+int num_packets = 0;
+int prog_size = 0;
+bool in_prog = false;
+long prog_start = 0;
+long last_packet = 0;
+int current_eeprom_address = EEPROM_OFFSET_ADDRESS;
 
 /*
 Microchip 24LC256
-Arduino Analog pin 4 - SDA - EEPROM pin 5
-Arduino Analog pin 5 - SCL - EEPROM pin 6
-Arduino 5V           - VCC - EEPROM pin 8
-Arduino GND          - VSS - EEPROM pin 4 
+Arduino Analog SDA - EEPROM pin 5
+Arduino Analog SCL - EEPROM pin 6
+Arduino 5V - VCC - EEPROM pin 8
+Arduino GND - VSS - EEPROM pin 4 
 
-* pin 1 is has the dot, on the notched end, if you were wondering
+* Connect pins 1, 2, and 3 of the eeprom GND. Pin 7 (write protect) should also be connected to GND according to datasheet but I found it works fine being open
+* pin 1 is has the dot, on the notched end, if you were wondering ;)
 
-Pin 1,2,3 of the eeprom must be connect to GND too unless other address is used, see datasheet. Pin 7 (write protect) should also be connected to GND
+See Arduino for how to find I2C pins for your board, it varies:
+Board	I2C / TWI pins
+Uno, Ethernet	A4 (SDA), A5 (SCL)
+Mega2560	20 (SDA), 21 (SCL)
+Leonardo	2 (SDA), 3 (SCL)
+Due	20 (SDA), 21 (SCL), SDA1, SCL1
 */
 
 
 //Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
 SoftwareSerial nss(softTxPin, softRxPin);
+
+extEEPROM eeprom(kbits_256, 1, 64);
 
 Stream* getProgrammerSerial() {
   return &Serial1;
@@ -53,6 +130,306 @@ Stream* getDebugSerial() {
   return &Serial;  
 }
 
+void clear_read() {
+  int count = 0;
+  while (getProgrammerSerial()->available() > 0) {
+    getProgrammerSerial()->read();
+    count++;
+  }
+  
+  if (count > 0) {
+    getDebugSerial()->print("Discarded "); getDebugSerial()->print(count, DEC); getDebugSerial()->println(" extra bytes");
+  }
+}
+
+// returns bytes read, -1 if error
+int read_response(uint8_t len, int timeout) {
+  long start = millis();
+  int pos = 0;
+
+  while (millis() - start < timeout) {          
+    if (getProgrammerSerial()->available() > 0) {
+      read_buffer[pos] = getProgrammerSerial()->read();
+      pos++;
+      
+      if (pos == len) {
+        // we've read expected len
+        break;
+      }
+    }
+  }
+  
+  // consume any extra
+  clear_read();
+  
+  if (pos == len) {
+    return pos;
+  }
+  
+  getDebugSerial()->print("read_response() timeout! read "); getDebugSerial()->print(pos, DEC); getDebugSerial()->print(" bytes but expected "); getDebugSerial()->print(len, DEC); getDebugSerial()->println(" bytes");
+  return -1;
+}
+
+// TODO get rid of offset, just send the pointer to start at
+void dump_buffer(uint8_t arr[], char context[], uint8_t offset, uint8_t len) {
+  getDebugSerial()->print(context);
+  // weird this crashes leonardo
+  //getDebugSerial()->print("start at "); getDebugSerial()->print(offset, DEC); getDebugSerial()->print(" len "); getDebugSerial()->print(len, DEC);
+  getDebugSerial()->print(": ");
+  
+  for (int i = offset; i < offset + len; i++) {
+    getDebugSerial()->print(arr[i], HEX);
+    
+    if (i < (offset + len) -1) {
+      getDebugSerial()->print(",");
+    }
+  }
+  
+  getDebugSerial()->println("");
+  getDebugSerial()->flush();
+}
+
+void update_last_command() {
+  last_optiboot_cmd = millis();  
+}
+
+// Send command and buffer and return length of reply
+int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
+
+    if (VERBOSE) {
+      if (command == STK_GET_PARAMETER) {
+        getDebugSerial()->print("send() STK_GET_PARAMETER: "); getDebugSerial()->println(command, HEX);  
+      } else if (command == STK_ENTER_PROGMODE) {
+        getDebugSerial()->print("send() STK_ENTER_PROGMODE: "); getDebugSerial()->println(command, HEX);          
+      } else if (command == STK_LEAVE_PROGMODE) {
+        getDebugSerial()->print("send() STK_LEAVE_PROGMODE: "); getDebugSerial()->println(command, HEX);  
+      } else if (command == STK_LOAD_ADDRESS) {
+        getDebugSerial()->print("send() STK_LOAD_ADDRESS: "); getDebugSerial()->println(command, HEX);  
+      } else if (command == STK_PROG_PAGE) {
+        getDebugSerial()->print("send() STK_PROG_PAGE: "); getDebugSerial()->println(command, HEX);  
+      } else if (command == STK_READ_PAGE) {
+        getDebugSerial()->print("send() STK_READ_PAGE: "); getDebugSerial()->println(command, HEX);  
+      } else if (command == STK_READ_SIGN) {
+        getDebugSerial()->print("send() STK_READ_SIGN: "); getDebugSerial()->println(command, HEX);  
+      } else if (command == STK_GET_SYNC) {
+        getDebugSerial()->print("send() STK_GET_SYNC: "); getDebugSerial()->println(command, HEX);  
+      } else {
+        getDebugSerial()->print("send() unexpected command: "); getDebugSerial()->println(command, HEX);          
+      }
+    }
+    
+    getProgrammerSerial()->write(command);
+
+  if (arr != NULL && len > 0) {
+    for (int i = 0; i < len; i++) {
+      getProgrammerSerial()->write(arr[i]);   
+    }
+    
+    if (VERBOSE) {
+      dump_buffer(arr, "send()->", 0, len);
+    }
+  }
+  
+  getProgrammerSerial()->write(CRC_EOP);
+  // make it synchronous
+  getProgrammerSerial()->flush();
+      
+  // add 2 bytes since we always expect to get back STK_INSYNC + STK_OK
+  int reply_len = read_response(response_length + 2, 5000);
+
+  if (reply_len == -1) {
+    return -1;
+  }
+  
+  if (VERBOSE) {
+    dump_buffer(read_buffer, "send_reply", 0, reply_len);    
+  }
+
+  if (reply_len < 2) {
+    getDebugSerial()->println("Invalid response");
+    return -1; 
+  }
+
+  if (read_buffer[0] != STK_INSYNC) {
+    getDebugSerial()->print("Expected STK_INSYNC but was "); getDebugSerial()->println(read_buffer[0], HEX);
+    return -1;
+  }
+  
+  if (read_buffer[reply_len - 1] != STK_OK) {
+    getDebugSerial()->print("Expected STK_OK but was "); getDebugSerial()->println(read_buffer[reply_len - 1], HEX);
+    return -1;    
+  }
+  
+  // rewrite buffer without the STK_INSYNC and STK_OK
+  uint8_t data_reply = reply_len - 2;
+  
+  for (int i = 0; i < data_reply; i++) {
+    read_buffer[i] = read_buffer[i+1];
+  }
+  
+  // zero the ok
+  read_buffer[reply_len - 1] = 0;
+  
+  // success update
+  update_last_command();
+  
+  // return the data portion of the length
+  return data_reply;
+}
+
+void bounce() {    
+    // Bounce the reset pin
+    getDebugSerial()->println("Bouncing the Arduino");
+    // set reset pin low
+    digitalWrite(resetPin, LOW);
+    delay(200);
+    digitalWrite(resetPin, HIGH);
+    delay(300);
+}
+
+int flash_init() {
+  clear_read();
+    
+    int data_len = 0;
+    
+    cmd_buffer[0] = 0x81;
+    data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
+    
+    if (data_len == -1) {
+     return -1;   
+    }
+    
+    getDebugSerial()->print("Firmware version is "); getDebugSerial()->println(read_buffer[0], HEX);
+    
+    cmd_buffer[0] = 0x82;
+    data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
+
+    if (data_len == -1) {
+     return -1;   
+    }
+
+    getDebugSerial()->print("Minor is "); getDebugSerial()->println(read_buffer[0], HEX);    
+    
+    // this not a valid command. optiboot will send back 0x3 for anything it doesn't understand
+    cmd_buffer[0] = 0x83;
+    data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
+    
+    if (data_len == -1) {
+      return -1;   
+    } else if (read_buffer[0] != 0x3) {
+      getDebugSerial()->print("Expected 0x3 but was "); getDebugSerial()->println(read_buffer[0]);    
+      return -1;
+    }
+
+    data_len = send(STK_READ_SIGN, NULL, 0, 3);
+    
+    if (data_len != 3) {      
+      return -1;      
+    } else if (read_buffer[0] != 0x1E && read_buffer[1] != 0x94 && read_buffer[2] != 0x6) {
+      getDebugSerial()->println("Signature invalid");
+      return -1;
+    }
+    
+    // IGNORED BY OPTIBOOT
+    // avrdude does a set device
+    //avrdude: Send: B [42] . [86] . [00] . [00] . [01] . [01] . [01] . [01] . [03] . [ff] . [ff] . [ff] . [ff] . [00] . [80] . [02] . [00] . [00] . [00] @ [40] . [00]   [20]     
+    // then set device ext
+    //avrdude: Send: E [45] . [05] . [04] . [d7] . [c2] . [00]   [20]     
+    return 0;
+}
+
+// need 3 bytes for prog_page so data should start at buf[3]
+int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {    
+    // ctrl,len,addr high/low
+    // address is byte index 2,3
+    
+    // retry up to 2 times
+    // disable retries for debugging
+    //for (int z = 0; z < PROG_PAGE_RETRIES + 1; z++) {
+      // [55] . [00] . [00] 
+      if (send(STK_LOAD_ADDRESS, addr, 2, 0) == -1) {
+        getDebugSerial()->println("Load address failed");
+        return -1;
+      }
+       
+      // [64] . [00] . [80] F [46] . [0c] .
+      
+      // rewrite buffer to make things easier
+      // data starts at addr_offset + 2
+      // format of prog_page is 0x00, data_len, 0x46, [data]
+      buffer[0] = 0;
+      buffer[1] = data_len;
+      buffer[2] = 0x46;
+      //remaining buffer is data
+      
+      // add 3 to data_len
+      if (send(STK_PROG_PAGE, buffer, data_len + 3, 0) == -1) {
+        getDebugSerial()->println("Prog page failed");
+        return -1;
+      }
+  
+      uint8_t reply_len = send(STK_READ_PAGE, buffer, 3, data_len);
+      
+      if (reply_len == -1) {
+        getDebugSerial()->println("Read page failure");
+        return -1;
+      }
+      
+      if (reply_len != data_len) {
+        getDebugSerial()->println("Read page length does not match");
+        return -1;
+      }
+      
+      // TODO we can compute checksum on buffer, reset and use for the read buffer!!!!!!!!!!!!!!!
+      
+      if (VERBOSE) {
+        getDebugSerial()->print("Read page length is "); getDebugSerial()->println(reply_len, DEC);      
+      }
+      
+      bool verified = true;
+      
+      // verify each byte written matches what is returned by bootloader
+      for (int i = 0; i < reply_len; i++) {        
+        if (read_buffer[i] != buffer[i + 3]) {
+          getDebugSerial()->print("Read page does not match write buffer at position "); getDebugSerial()->println(i, DEC);
+          verified = false;
+          break;
+        }
+      }
+      
+      if (!verified) {
+        // retry is still attempts remaining
+        //if (z < PROG_PAGE_RETRIES) {
+        //  getDebugSerial()->println("Failed to verify page.. retrying");
+        //} else {
+          getDebugSerial()->println("Failed to verify page");
+        //}
+        
+        // disable retries
+        return -1;
+        //continue;
+      }
+      
+      return 0;      
+    //}
+    
+  // read verify failure
+  return -1;
+}
+
+
+// called after programming completes
+void prog_reset() {
+  last_optiboot_cmd = 0;
+  packet_count = 0;
+  num_packets = 0;
+  prog_size = 0;
+  in_prog = false;
+  prog_start = 0;
+  last_packet = 0;
+  current_eeprom_address = EEPROM_OFFSET_ADDRESS;
+}
+
 void setup() {
   // start usb serial on leonardo for debugging
   Serial.begin(9600);
@@ -63,6 +440,11 @@ void setup() {
   
   // uart is for programming
   Serial1.begin(9600);
+  
+  if (eeprom.begin(twiClock400kHz) != 0) {
+    getDebugSerial()->println("eeprom failure");
+    return;  
+  }
   
   // we only have one Serial port (UART) so need nss for XBee
   nss.begin(9600);  
@@ -103,13 +485,77 @@ void sendByte(uint8_t b, bool escape) {
   getProgrammerSerial()->flush();
 }
 
-int packetCount = 0;
-int packets = 0;
-int size = 0;
-bool prog = false;
-long prog_start = 0;
-long last_packet = 0;
+int flash(int start_address, int size) {
+  // now read from eeprom and program
+  getDebugSerial()->println("Programming arduino from eeprom...");
+  
+  bounce();
+  
+  if (flash_init() != 0) {
+    getDebugSerial()->println("Check failed!"); 
+    prog_reset();
+    return -1;
+  } 
+  
+  if (send(STK_ENTER_PROGMODE, buffer, 0, 0) == -1) {
+    getDebugSerial()->println("STK_ENTER_PROGMODE failure");
+    return -1;
+  }    
+  
+  int current_address = start_address;
+  
+  while (current_address < size) {
+    int len = 0;
+    
+    if (size - current_address < 128) {
+      len = size - current_address;
+    } else {
+      len = 128;
+    }
+    
+    if (VERBOSE) {
+      getDebugSerial()->print("EEPROM read at address "); getDebugSerial()->print(current_address, DEC); getDebugSerial()->print(" len is "); getDebugSerial()->println(len, DEC);            
+    }
+     
+    // skip 2 so we leave room for the prog_page command
+    int ok = eeprom.read(current_address, buffer + 3, len);
+    
+    if (ok != 0) {
+      getDebugSerial()->println("EEPROM read fail");
+      return -1;
+    }
+    
+    // set laod address little endian
+    // gotta divide by 2
+    addr[0] = ((current_address - start_address) / 2) & 0xff;
+    addr[1] = (((current_address - start_address) / 2) >> 8) & 0xff;
+    
+    if (VERBOSE) {
+      getDebugSerial()->print("Sending page len: "); getDebugSerial()->println(len, DEC);            
+      dump_buffer(buffer + 3, "read from eeprom->", 0, len);
+    }
+                  
+    // flash
+    if (send_page(addr, buffer, len) == -1) {
+      getDebugSerial()->println("Send page fail");
+      return -1;
+    }
+    
+    current_address+= len;
+  }
+  
+  if (send(STK_LEAVE_PROGMODE, buffer, 0, 0) == -1) {
+    getDebugSerial()->println("STK_LEAVE_PROGMODE failure");
+    return -1;       
+  }
+  
+  getDebugSerial()->println("Completed programming");
+  getDebugSerial()->println("ok");
+  
+  return 0;
+}
 
+        
 void handleXBee() {
     // if programming start magic packet is received:
     // reset the target arduino.. determine the neecessary delay
@@ -118,74 +564,99 @@ void handleXBee() {
     // on final packet do any verification to see if it boots
 
     if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE) {
-      bool prog = false;
       
       // now fill our zb rx class
       xbee.getResponse().getZBRxResponse(rx);
       
       // 3 bytes for head + at least one programming
       if (rx.getDataLength() >= 4) {
-        if (rx.getData(0) == MAGIC_BYTE1 && rx.getData(1) == MAGIC_BYTE2) {
-          
-          if (rx.getData(2) == 0x10) {
+        if (rx.getData(0) == MAGIC_BYTE1 && rx.getData(1) == MAGIC_BYTE2) {          
+          if (rx.getData(2) == CONTROL_PROG_REQUEST) {
            // start
 
             getDebugSerial()->println("Received programming start packet");
             
-            if (prog) {
+            if (in_prog) {
               getDebugSerial()->println("Error: never received programming stop packet"); 
             }
 
-             // tell Arduino it's about to be flashed
-              // forwardPacket();
+            // TODO tell Arduino it's about to be flashed
+            // forwardPacket();
             
             prog_start = millis();
-            prog = true; 
+            in_prog = true; 
+            packet_count = 0;
             
             // size in bytes
-            size = rx.getData(3) << 8 + rx.getData(4);
-            // num packets to be sent
-            packets = rx.getData(5) << 8 + rx.getData(6);            
-          } else if (rx.getData(2) == 0x20 && prog) {
-            packetCount++;
+            prog_size = rx.getData(3) << 8 + rx.getData(4);
+            // num packets to be sent   
+            num_packets = rx.getData(5) << 8 + rx.getData(6);            
+          } else if (rx.getData(2) == CONTROL_PROG_DATA && in_prog) {
+            packet_count++;
             
-            // write to eeprom
-            for (int i = 7; i < rx.getDataLength(); i++) {
-              //rx.getData(i)
+            int address = (rx.getData(3) << 8) + rx.getData(4); 
+            // TODO remove redundant. xbee provides
+            int length = rx.getData(5);
+            
+            // now write page to eeprom
+
+            // check if the address of this packet aligns with the last write to eeprom. it could be a resend and that's ok
+            if (current_eeprom_address != (address + EEPROM_OFFSET_ADDRESS)) {
+              getDebugSerial()->println("WARN: expected address X but got Y. must be a resend");
+            }
+
+            // NOTE we've made it idempotent in case we get retries
+            // TODO validate it's in range            
+            current_eeprom_address = address + EEPROM_OFFSET_ADDRESS;
+              
+            for (int i = 6; i < rx.getDataLength(); i++) {  
+              // TODO get array from xbee and write block instead for better performance  
+              if (eeprom.write(current_eeprom_address, rx.getData(i)) != 0) {
+                getDebugSerial()->println("EEPROM write failure");
+                return;
+              }
+              current_eeprom_address++;
             }  
-            
-            if (packetCount == packets) {
-              // last packet
-              
-            // done do any verification and reply back
-            // call function to read from eeprom and flash
-            
-              // start flashing
-              
-              
-              
-              
-              
-              prog = false;
-            } else if (packetCount > packets) {
-              // error
+
+            if (packet_count == num_packets) {
+              // should be last packet but maybe not if we got retries 
             }
             
+            // TODO write a checksum in eeprom header so we can verify prior to flashing                          
             // prog data
-          } else if (rx.getData(2) == 0x40 && prog) {
+          } else if (rx.getData(2) == CONTROL_FLASH_START && in_prog) {
             // done verify we got expected # packets
-            getDebugSerial()->println("Received programming stop packet");            
-            prog = false;
-          } else {
-            // sync error, not expecting prog data
+
+            // TODO verify that's what we've received            
+            prog_size = rx.getData(3) << 8 + rx.getData(4);
             
+            if (prog_size != current_eeprom_address) {
+                getDebugSerial()->println("Unable to flash we wrote X bytes but there are Y bytes in this sketch");
+                return;              
+            }
+
+            getDebugSerial()->println("Received flash init packet");            
+
+            if (flash(EEPROM_OFFSET_ADDRESS, prog_size) != 0) {
+              getDebugSerial()->println("Flash failure");                          
+              // TODO send result to remote
+              return; 
+            } else {
+              getDebugSerial()->println("Success!");                          
+            }
+                              
+            
+            // reset everything
+            in_prog = false;
+          } else {
+            // sync error, not expecting prog data   
           }
+          
+          last_packet = millis();
         }
-        
-        last_packet = millis();
       }
       
-      if (prog == false) {
+      if (in_prog == false) {
         forwardPacket();
       }
     }  
@@ -204,14 +675,18 @@ void loop() {
     getDebugSerial()->println(xbee.getResponse().getErrorCode(), DEC);
   }  
   
-  if (prog && millis() - last_packet > 5000) {
+  if (in_prog && millis() - last_packet > 5000) {
     // timeout
     getDebugSerial()->println("Programming timeout");    
-    prog = false;
+    in_prog = false;
     // clear eeprom
   }
   
-  if (prog == false) {
+  if (in_prog && last_packet > 0 && millis() - last_packet > XBEE_TIMEOUT) {
+    prog_reset();
+  }
+  
+  if (!in_prog) {
     // check if this has magic bytes before forwarding
     
     // pass all data (xbee packets) from remote out the xbee serial port

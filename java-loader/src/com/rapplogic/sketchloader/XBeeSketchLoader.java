@@ -23,6 +23,42 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 	// somewhat redundant
 	final int CONTROL_PROG_DONE = 0x40; 	//1000000
 	
+	private int[] getHeader(int sizeInBytes, int numPages, int bytesPerPage) {
+		return new int[] { 
+				MAGIC_BYTE1, 
+				MAGIC_BYTE2, 
+				CONTROL_PROG_REQUEST, 
+				(sizeInBytes >> 8) & 0xff, 
+				sizeInBytes & 0xff, 
+				(numPages >> 8) & 0xff, 
+				numPages & 0xff,
+				bytesPerPage
+		};
+	}
+	
+	// xbee has error detection built-in but other protocols may need a checksum
+	private int[] getProgPageHeader(int address16, int length) {
+		return new int[] {
+				MAGIC_BYTE1, 
+				MAGIC_BYTE2, 
+				CONTROL_PROG_DATA, 
+				(address16 >> 8) & 0xff, 
+				address16 & 0xff,
+				length & 0xff
+		};
+	}
+	
+	private int[] getLast(int address16, int sizeInBytes) {
+		return new int[] {
+				MAGIC_BYTE1, 
+				MAGIC_BYTE2, 
+				CONTROL_PROG_DONE,
+				(sizeInBytes >> 8) & 0xff, 
+				sizeInBytes & 0xff, 				
+		};
+	}
+	
+	
 	public void process(String file, String device, int speed, String xbeeAddress) throws IOException {
 		// page size is max packet size for the radio
 		Sketch sketch = getSketch(file, PAGE_SIZE);
@@ -40,14 +76,14 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			// TODO consider sending version number, a weak hash of hex file so we can query what version is on the device. could simply add up the bytes and send as 24-bit value
 			
 			// send header:  size + #pages
-			xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, new int[] { MAGIC_BYTE1, MAGIC_BYTE2, CONTROL_PROG_REQUEST, (sketch.getSize() >> 8) & 0xff, sketch.getSize() & 0xff, (sketch.getPages().size() >> 8) & 0xff, sketch.getPages().size() & 0xff }));
+			xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));
 			System.out.println("Sending sketch to xbee radio " + xBeeAddress64.toString() + ", size (bytes) " + sketch.getSize() + ", packets " + sketch.getPages().size());
 			
 			for (Page page : sketch.getPages()) {
 				// send to radio, one page at a time
 				// TODO handle errors and retries
 				// send address since so we know where to write this in the eeprom
-				xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, combine(new int[] {MAGIC_BYTE1, MAGIC_BYTE2, CONTROL_PROG_DATA, (page.getAddress() >> 8) & 0xff, page.getAddress() & 0xff }, page.getData())));
+				xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, combine(getProgPageHeader(page.getAddress16(), page.getData().length), page.getData())));
 				System.out.print("#");
 			}
 

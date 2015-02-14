@@ -1,9 +1,11 @@
 #include <Wire.h>
 
-#include <extEEPROM.h>
-
-
 /* CONFIGURATION
+
+// This may be useful for cases where you want to program an Arduino that doesn't have a usb port, (Arduino Pro, breadboard arduino etc), and you don't have a FTDI cable/board handy.
+// In this situation, wire the Arduino to program to a usb Arduino and send to program
+
+// the idea of sketcher is to provide remote programming in an transport agnositic fashion, bring your own wireless. Initially I plan to support xbee, nordic, wifi (ebay e***) 
 
 // This sketch "uploads" a sketch to a Arduino (with Optiboot) via Serial @ 115.2K
 
@@ -103,9 +105,7 @@ uint8_t buffer[BUFFER_SIZE];
 uint8_t read_buffer[READ_BUFFER_SIZE];
 
 // disable or bootloader timesout due to delays between prog_page
-#define VERBOSE true
-
-extEEPROM eeprom(kbits_256, 1, 64);
+#define VERBOSE false
 
 // wiring:
 const int ssTx = 4;
@@ -375,6 +375,7 @@ int send_page(uint8_t addr_offset, uint8_t data_len) {
     // ctrl,len,addr high/low
     // address is byte index 2,3
     
+    // FIXME retries don't work since we overwrite the address, oops
     // retry up to 2 times
     for (int z = 0; z < PROG_PAGE_RETRIES + 1; z++) {
       // [55] . [00] . [00] 
@@ -459,12 +460,6 @@ void setup() {
   //diecimilao.upload.speed=115200
   // configure serial for bootloader baud rate  
   Serial1.begin(115200);
-
-// TODO REMOVE!
-  if (eeprom.begin(twiClock400kHz) != 0) {
-    getDebugSerial()->println("eeprom failure");
-    return;  
-  }
   
 //  nss.begin(9600);
 }

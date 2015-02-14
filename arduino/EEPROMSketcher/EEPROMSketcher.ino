@@ -1,7 +1,9 @@
 #include <Wire.h>
 #include <extEEPROM.h>
 
-
+/*
+This is just a proof of concept for writing a sketch to eeprom and reading it back to program. It has no practical use otherwise.
+*/
 
 // only need 128=> + 4 bytes len/addr
 #define BUFFER_SIZE 150
