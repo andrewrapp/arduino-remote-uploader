@@ -124,6 +124,8 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			// TODO put a magic word in each packet to differentiate from other radios that might be trying to communicate during proramming. for now we'll say unsupported?
 			// TODO consider sending version number, a weak hash of hex file so we can query what version is on the device. could simply add up the bytes and send as 24-bit value
 			
+			long start = System.currentTimeMillis();
+			
 			// send header:  size + #pages
 			System.out.println("Sending sketch to xbee radio with address " + xBeeAddress64.toString() + ", size (bytes) " + sketch.getSize() + ", packets " + sketch.getPages().size() + ", packet size " + sketch.getBytesPerPage());			
 			ZNetTxStatusResponse response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));			
@@ -166,7 +168,7 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			
 			waitForAck();
 			
-			System.out.println("\nI think I Successfully flashed Arduino!");
+			System.out.println("\nSuccessfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
 			
 			xbee.close();
 		} catch (Exception e) {

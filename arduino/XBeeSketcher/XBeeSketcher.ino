@@ -85,7 +85,7 @@ const int resetPin = 8;
 const int PROG_PAGE_RETRIES = 2;
 const int EEPROM_OFFSET_ADDRESS = 16;
 // max time between optiboot commands before we send a noop.. not so relevant when using eeprom
-const int MAX_OPTI_DELAY = 300;
+//const int MAX_OPTI_DELAY = 300;
 // if we don't receive a packet every X ms, timeout
 const long XBEE_TIMEOUT = 5000;
 
@@ -93,13 +93,13 @@ XBee xbee = XBee();
 XBeeResponse response = XBeeResponse();
 ZBRxResponse rx = ZBRxResponse();
 
-uint8_t payload[] = { 0 };
+uint8_t xbeeTxPayload[] = { 0 };
 uint32_t COORD_MSB_ADDRESS = 0x0013a200;
 uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
 
 // Coordinator/XMPP Gateway
 XBeeAddress64 addr64 = XBeeAddress64(COORD_MSB_ADDRESS, COORD_LSB_ADDRESS);
-ZBTxRequest tx = ZBTxRequest(addr64, payload, sizeof(payload));
+ZBTxRequest tx = ZBTxRequest(addr64, xbeeTxPayload, sizeof(xbeeTxPayload));
 ZBTxStatusResponse txStatus = ZBTxStatusResponse();
 
 uint8_t cmd_buffer[1];
@@ -107,7 +107,6 @@ uint8_t addr[2];
 uint8_t buffer[BUFFER_SIZE];
 uint8_t read_buffer[READ_BUFFER_SIZE];
 
-long last_optiboot_cmd = 0;
 int packet_count = 0;
 int num_packets = 0;
 int prog_size = 0;
@@ -115,7 +114,6 @@ bool in_prog = false;
 long prog_start = 0;
 long last_packet = 0;
 int current_eeprom_address = EEPROM_OFFSET_ADDRESS;
-bool in_bootloader = false;
 
 /*
 Microchip 24LC256
@@ -213,10 +211,6 @@ void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
   getDebugSerial()->flush();
 }
 
-void update_last_command() {
-  last_optiboot_cmd = millis();  
-}
-
 // Send command and buffer and return length of reply
 int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
 
@@ -295,7 +289,7 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
   read_buffer[reply_len - 1] = 0;
   
   // success update
-  update_last_command();
+//  update_last_command();
   
   // return the data portion of the length
   return data_reply;
@@ -348,6 +342,8 @@ int flash_init() {
       getDebugSerial()->println("Signature invalid");
       return -1;
     }
+    
+    getDebugSerial()->println("Talking to Optiboot");
     
     // IGNORED BY OPTIBOOT
     // avrdude does a set device
@@ -439,7 +435,6 @@ int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {
 
 // called after programming completes
 void prog_reset() {
-  last_optiboot_cmd = 0;
   packet_count = 0;
   num_packets = 0;
   prog_size = 0;
@@ -481,14 +476,13 @@ void sendByte(uint8_t b, bool escape) {
   getProgrammerSerial()->flush();
 }
 
+// blocking. takes about 1208ms for a small sketch (2KB)
 int flash(int start_address, int size) {
-  // now read from eeprom and program
-  getDebugSerial()->println("Flashing from eeprom...");
-  
+  // now read from eeprom and program  
   long start = millis();
   
   bounce();
-  
+        
   if (flash_init() != 0) {
     getDebugSerial()->println("Check failed!"); 
     prog_reset();
@@ -500,6 +494,8 @@ int flash(int start_address, int size) {
     return -1;
   }    
   
+  getDebugSerial()->println("Flashing from eeprom...");
+    
   int current_address = start_address;
   
   while (current_address < (size + EEPROM_OFFSET_ADDRESS)) {
@@ -547,9 +543,9 @@ int flash(int start_address, int size) {
     return -1;       
   }
   
-  getDebugSerial()->print("Flash in "); getDebugSerial()->print(millis() - start, DEC); getDebugSerial()->println("ms");
-  getDebugSerial()->println("ok");
-  
+  // SUCCESS!!
+  getDebugSerial()->print("Flashed in "); getDebugSerial()->print(millis() - start, DEC); getDebugSerial()->println("ms");
+      
   return 0;
 }
 
@@ -563,11 +559,10 @@ void bounce() {
     delay(200);
     digitalWrite(resetPin, HIGH);
     delay(300);
-    in_bootloader = true;
 }
 
 int sendMessageToProgrammer(uint8_t status) {
-  payload[0] = status;
+  xbeeTxPayload[0] = status;
   // TODO set frame id with millis & 256
   xbee.send(tx);
   
@@ -602,19 +597,19 @@ void handlePacket() {
     // NOTE: any programs that send to this radio should be shutdown or the programming would hose the arduino
     // on final packet do any verification to see if it boots
 
-    if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE) {
-      
-      getDebugSerial()->println("RX");
-      
+    if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE) {      
       // now fill our zb rx class
       xbee.getResponse().getZBRxResponse(rx);
       
       // 3 bytes for head + at least one programming
       if (rx.getDataLength() >= 4 && rx.getData(0) == MAGIC_BYTE1 && rx.getData(1) == MAGIC_BYTE2) {          
+        // echo * for each programming packet
+        getDebugSerial()->print("*");
+      
         if (rx.getData(2) == CONTROL_PROG_REQUEST) {
          // start
 
-          getDebugSerial()->println("Start");
+          getDebugSerial()->println("Received start xbee packet");
           
           if (in_prog) {
             getDebugSerial()->println("Error: in prog"); 
@@ -622,6 +617,9 @@ void handlePacket() {
             return;
           }
 
+          // reset state
+          prog_reset();
+          
           // TODO tell Arduino it's about to be flashed
           // forwardPacket();
           
@@ -700,7 +698,8 @@ void handlePacket() {
         } else if (rx.getData(2) == CONTROL_FLASH_START && in_prog) {
           // done verify we got expected # packets
 
-          getDebugSerial()->println("Flashing");
+          // line break
+          getDebugSerial()->println("");
           
           // TODO verify that's what we've received            
           // NOTE redundant we have prog_size
@@ -719,14 +718,12 @@ void handlePacket() {
           if (flash(EEPROM_OFFSET_ADDRESS, prog_size) != 0) {
             getDebugSerial()->println("Flash failure");   
             sendMessageToProgrammer(FAILURE);            
-            return; 
           } else {
-            getDebugSerial()->println("Success!");    
             sendMessageToProgrammer(OK);            
           }
-                            
+
           // reset everything
-          in_prog = false;
+          prog_reset();                            
         } else {
           // sync error, not expecting prog data   
           // TODO send error. client needs to start over
