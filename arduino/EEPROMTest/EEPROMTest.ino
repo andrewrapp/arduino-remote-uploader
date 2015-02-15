@@ -18,6 +18,7 @@ Due	20 (SDA), 21 (SCL), SDA1, SCL1
 void setup(void)
 {
   Serial.begin(9600);
+  while (!Serial);
   
   delay(5000);
   

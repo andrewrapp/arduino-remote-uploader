@@ -3,10 +3,13 @@ package com.rapplogic.sketchloader;
 import java.io.IOException;
 import java.util.Arrays;
 
+import com.rapplogic.xbee.api.PacketListener;
 import com.rapplogic.xbee.api.XBee;
 import com.rapplogic.xbee.api.XBeeAddress64;
 import com.rapplogic.xbee.api.XBeeException;
+import com.rapplogic.xbee.api.XBeeResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
+import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
 
 public class XBeeSketchLoader extends ArduinoSketchLoader {
 
@@ -14,16 +17,16 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 		super();
 	}
 	
-	final int PAGE_SIZE = 80;
+	final int PAGE_SIZE = 64;
 	final int MAGIC_BYTE1 = 0xef;
 	final int MAGIC_BYTE2 = 0xac;
 	// make enum
 	final int CONTROL_PROG_REQUEST = 0x10; 	//10000
-	final int CONTROL_PROG_DATA = 0x20; 	//100000
+	final int CONTROL_WRITE_EEPROM = 0x20; 	//100000
 	// somewhat redundant
-	final int CONTROL_PROG_DONE = 0x40; 	//1000000
+	final int CONTROL_START_FLASH = 0x40; 	//1000000
 	
-	private int[] getHeader(int sizeInBytes, int numPages, int bytesPerPage) {
+	private int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage) {
 		return new int[] { 
 				MAGIC_BYTE1, 
 				MAGIC_BYTE2, 
@@ -37,26 +40,42 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 	}
 	
 	// xbee has error detection built-in but other protocols may need a checksum
-	private int[] getProgPageHeader(int address16, int length) {
+	private int[] getHeader(int controlByte, int sixteenBitValue) {
 		return new int[] {
 				MAGIC_BYTE1, 
 				MAGIC_BYTE2, 
-				CONTROL_PROG_DATA, 
-				(address16 >> 8) & 0xff, 
-				address16 & 0xff,
-				length & 0xff
+				controlByte, 
+				(sixteenBitValue >> 8) & 0xff, 
+				sixteenBitValue & 0xff
 		};
+	}
+
+	private int[] getEEPROMWriteHeader(int address16) {
+		return getHeader(CONTROL_WRITE_EEPROM, address16);
 	}
 	
-	private int[] getLast(int address16, int sizeInBytes) {
-		return new int[] {
-				MAGIC_BYTE1, 
-				MAGIC_BYTE2, 
-				CONTROL_PROG_DONE,
-				(sizeInBytes >> 8) & 0xff, 
-				sizeInBytes & 0xff, 				
-		};
+	private int[] getFlashStartHeader(int progSize) {
+		return getHeader(CONTROL_START_FLASH, progSize);
 	}
+	
+
+//	private int[] getFlashStart(int address16) {
+//		return new int[] { 
+//				MAGIC_BYTE1, 
+//				MAGIC_BYTE2, 
+//				CONTROL_START_FLASH
+//		};
+//	}
+	
+//	private int[] getLast(int address16, int sizeInBytes) {
+//		return new int[] {
+//				MAGIC_BYTE1, 
+//				MAGIC_BYTE2, 
+//				CONTROL_START_FLASH,
+//				(sizeInBytes >> 8) & 0xff, 
+//				sizeInBytes & 0xff, 				
+//		};
+//	}
 	
 	
 	public void process(String file, String device, int speed, String xbeeAddress) throws IOException {
@@ -68,6 +87,17 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 		try {
 			xbee.open(device, speed);
 			
+			xbee.addPacketListener(new PacketListener() {
+				@Override
+				public void processResponse(XBeeResponse response) {
+
+				}
+			});
+			
+			if (sketch.getSize() != sketch.getLastPage().getRealAddress16() + sketch.getLastPage().getData().length) {
+				throw new RuntimeException("boom");
+			}
+			
 			XBeeAddress64 xBeeAddress64 = new XBeeAddress64(xbeeAddress);
 			
 			// TODO send request to start programming and wait for reply
@@ -76,21 +106,46 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			// TODO consider sending version number, a weak hash of hex file so we can query what version is on the device. could simply add up the bytes and send as 24-bit value
 			
 			// send header:  size + #pages
-			xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));
-			System.out.println("Sending sketch to xbee radio " + xBeeAddress64.toString() + ", size (bytes) " + sketch.getSize() + ", packets " + sketch.getPages().size());
+			System.out.println("Sending sketch to xbee radio with address " + xBeeAddress64.toString() + ", size (bytes) " + sketch.getSize() + ", packets " + sketch.getPages().size() + ", packet size " + sketch.getBytesPerPage());			
+			ZNetTxStatusResponse response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));			
+			
+			if (response.isError()) {
+				throw new RuntimeException("Failed to delivery programming start packet " + response);
+			}
 			
 			for (Page page : sketch.getPages()) {
 				// send to radio, one page at a time
 				// TODO handle errors and retries
 				// send address since so we know where to write this in the eeprom
-				xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, combine(getProgPageHeader(page.getAddress16(), page.getData().length), page.getData())));
-				System.out.print("#");
+				
+				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16()), page.getData());
+				System.out.println("Sending page with address " + page.getRealAddress16() + ", packet " + toHex(data));
+				response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, data));
+				
+				if (response.isSuccess()) {
+//					System.out.print("#");					
+				} else {
+					throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", response " + response);
+				}
+				
+				// until we get ack put in delay or softserial buffer overruns
+				Thread.sleep(500);
 			}
 
+			System.out.println("Sending flash start packet " + getFlashStartHeader(sketch.getSize()));
+			response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getFlashStartHeader(sketch.getSize())));
+
+			if (response.isError()) {
+				throw new RuntimeException("Flash start packet failed to deliver " + response);					
+			}
+			
 			// TODO wait for rx packet to indicate success or failure
 			// whoa, need ACK
-			System.out.println("\nSuccessfully flashed Arduino!");
+			System.out.println("\nI think I Successfully flashed Arduino!");
+			
+			xbee.close();
 		} catch (Exception e) {
+			e.printStackTrace();
 			try {
 				xbee.close();
 			} catch (Exception e2) {}
@@ -105,6 +160,8 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 
 	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException {
 		// sketch hex file, device, speed, xbee address, radio_type  
-		new XBeeSketchLoader().process(args[0], args[1], Integer.parseInt(args[2]), args[3]);
+		//new XBeeSketchLoader().process(args[0], args[1], Integer.parseInt(args[2]), args[3]);
+		new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/HelloTest.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
+		
 	}
 }

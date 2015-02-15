@@ -282,6 +282,10 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		public int getBytesPerPage() {
 			return bytesPerPage;
 		}
+		
+		public Page getLastPage() {
+			return this.getPages().get(this.getPages().size() - 1);
+		}
 	}
 	
 	class Page {
@@ -310,8 +314,13 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 			this.ordinal = ordinal;
 		}
 		
-		public int getAddress16() {
+		// bootloader address is real / 2
+		public int getBootloaderAddress16() {
 			return address;
+		}
+
+		public int getRealAddress16() {
+			return address * 2;
 		}
 		
 		public int[] getData() {
@@ -375,7 +384,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		for (int i = 0; i < sketch.getPages().size(); i++) {
 			Page page = sketch.getPages().get(i);
 			
-			System.out.println("Sending page " + (i + 1) + " of " + sketch.getPages().size() + ", length is " + page.getData().length + ", address is " + Integer.toHexString(page.getAddress16()) + ", page is " + toHex(page.getPage()));
+			System.out.println("Sending page " + (i + 1) + " of " + sketch.getPages().size() + ", length is " + page.getData().length + ", address is " + Integer.toHexString(page.getBootloaderAddress16()) + ", page is " + toHex(page.getPage()));
 
 			if (i == 0) {
 				write(FIRST_PAGE);
