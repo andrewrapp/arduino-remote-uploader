@@ -6,7 +6,7 @@ This is just a proof of concept for writing a sketch to eeprom and reading it ba
 */
 
 // disable or bootloader timesout due to delays between prog_page
-#define VERBOSE false
+#define VERBOSE true
 
 // only need 128=> + 4 bytes len/addr
 #define BUFFER_SIZE 150

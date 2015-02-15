@@ -3,6 +3,11 @@
 #include <SoftwareSerial.h>
 #include <XBee.h>
 
+// finally success 2/15/15 11:38AM: Flash in 2174ms!
+
+// due to my flagrant use of Serial.println, the leonardo will go out of sram if version is true :(
+#define VERBOSE false
+
 // only need 128=> + 4 bytes len/addr
 #define BUFFER_SIZE 150
 #define READ_BUFFER_SIZE 150
@@ -59,11 +64,6 @@
 
 #define OK 1
 #define FAILURE 2
-
-// SCRATCH -----------------------> finally success 2/15/15 10:12AM: Flash in 2174ms!
-
-// due to my flagrant use of Serial.println, the leonardo will go out of sram if version is true :(
-#define VERBOSE false
 
 // WIRING:
 // unfortunately we can use an xbee shield because we need the serial port for programming. gotta use XBee with softserial
@@ -502,11 +502,11 @@ int flash(int start_address, int size) {
   
   int current_address = start_address;
   
-  while (current_address < size) {
+  while (current_address < (size + EEPROM_OFFSET_ADDRESS)) {
     int len = 0;
     
-    if (size - current_address < 128) {
-      len = size - current_address;
+    if ((size + EEPROM_OFFSET_ADDRESS) - current_address < 128) {
+      len = (size + EEPROM_OFFSET_ADDRESS) - current_address;
     } else {
       len = 128;
     }

@@ -423,6 +423,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		serialPort.close();
 	}
 	
+	// of course you can't use the arduino serial monitor with this since it needs exclusive access to the usb-serial port
 	public static void main(String[] args) throws Exception {		
 		new ArduinoSketchLoader().process(args[0], args[1]);
 	}
