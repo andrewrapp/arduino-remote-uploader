@@ -57,8 +57,11 @@
 #define CONTROL_PROG_DATA 0x20
 #define CONTROL_FLASH_START 0x40
 
+#define OK 1
+#define FAILURE 2
+
 // due to my flagrant use of Serial.println, the leonardo will go out of sram if version is true :(
-#define VERBOSE false
+#define VERBOSE true
 
 // WIRING:
 // unfortunately we can use an xbee shield because we need the serial port for programming. gotta use XBee with softserial
@@ -85,6 +88,15 @@ XBee xbee = XBee();
 XBeeResponse response = XBeeResponse();
 ZBRxResponse rx = ZBRxResponse();
 
+uint8_t payload[] = { 0 };
+uint32_t COORD_MSB_ADDRESS = 0x0013a200;
+uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
+
+// Coordinator/XMPP Gateway
+XBeeAddress64 addr64 = XBeeAddress64(COORD_MSB_ADDRESS, COORD_LSB_ADDRESS);
+ZBTxRequest tx = ZBTxRequest(addr64, payload, sizeof(payload));
+ZBTxStatusResponse txStatus = ZBTxStatusResponse();
+
 uint8_t cmd_buffer[1];
 uint8_t addr[2];
 uint8_t buffer[BUFFER_SIZE];
@@ -98,6 +110,7 @@ bool in_prog = false;
 long prog_start = 0;
 long last_packet = 0;
 int current_eeprom_address = EEPROM_OFFSET_ADDRESS;
+bool in_bootloader = false;
 
 /*
 Microchip 24LC256
@@ -110,11 +123,11 @@ Arduino GND - VSS - EEPROM pin 4
 * pin 1 is has the dot, on the notched end, if you were wondering ;)
 
 See Arduino for how to find I2C pins for your board, it varies:
-Board	I2C / TWI pins
-Uno, Ethernet	A4 (SDA), A5 (SCL)
-Mega2560	20 (SDA), 21 (SCL)
-Leonardo	2 (SDA), 3 (SCL)
-Due	20 (SDA), 21 (SCL), SDA1, SCL1
+Board I2C / TWI pins
+Uno, Ethernet A4 (SDA), A5 (SCL)
+Mega2560  20 (SDA), 21 (SCL)
+Leonardo  2 (SDA), 3 (SCL)
+Due 20 (SDA), 21 (SCL), SDA1, SCL1
 */
 
 
@@ -144,7 +157,9 @@ void clear_read() {
   }
   
   if (count > 0) {
-    getDebugSerial()->print("Discarded "); getDebugSerial()->print(count, DEC); getDebugSerial()->println(" extra bytes");
+    if (VERBOSE) {
+      getDebugSerial()->print("clear_read: trashed "); getDebugSerial()->print(count, DEC); getDebugSerial()->println(" bytes");      
+    }
   }
 }
 
@@ -172,7 +187,8 @@ int read_response(uint8_t len, int timeout) {
     return pos;
   }
   
-  getDebugSerial()->print("read_response() timeout! read "); getDebugSerial()->print(pos, DEC); getDebugSerial()->print(" bytes but expected "); getDebugSerial()->print(len, DEC); getDebugSerial()->println(" bytes");
+  // TODO return error code instead of strings that take up precious memeory
+  getDebugSerial()->print("read timeout! got "); getDebugSerial()->print(pos, DEC); getDebugSerial()->print(" byte, expected "); getDebugSerial()->print(len, DEC); getDebugSerial()->println(" bytes");
   return -1;
 }
 
@@ -281,16 +297,6 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
   return data_reply;
 }
 
-void bounce() {    
-    // Bounce the reset pin
-    getDebugSerial()->println("Bouncing the Arduino");
-    // set reset pin low
-    digitalWrite(resetPin, LOW);
-    delay(200);
-    digitalWrite(resetPin, HIGH);
-    delay(300);
-}
-
 int flash_init() {
   clear_read();
     
@@ -303,7 +309,10 @@ int flash_init() {
      return -1;   
     }
     
-    getDebugSerial()->print("Firmware version is "); getDebugSerial()->println(read_buffer[0], HEX);
+    if (VERBOSE) {
+      getDebugSerial()->print("Firmware: "); getDebugSerial()->println(read_buffer[0], HEX);      
+    }
+
     
     cmd_buffer[0] = 0x82;
     data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
@@ -312,7 +321,9 @@ int flash_init() {
      return -1;   
     }
 
-    getDebugSerial()->print("Minor is "); getDebugSerial()->println(read_buffer[0], HEX);    
+    if (VERBOSE) {
+      getDebugSerial()->print("Minor: "); getDebugSerial()->println(read_buffer[0], HEX);    
+    }
     
     // this not a valid command. optiboot will send back 0x3 for anything it doesn't understand
     cmd_buffer[0] = 0x83;
@@ -321,7 +332,7 @@ int flash_init() {
     if (data_len == -1) {
       return -1;   
     } else if (read_buffer[0] != 0x3) {
-      getDebugSerial()->print("Expected 0x3 but was "); getDebugSerial()->println(read_buffer[0]);    
+      getDebugSerial()->print("Unxpected optiboot reply: "); getDebugSerial()->println(read_buffer[0]);    
       return -1;
     }
 
@@ -380,7 +391,7 @@ int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {
       }
       
       if (reply_len != data_len) {
-        getDebugSerial()->println("Read page length does not match");
+        getDebugSerial()->println("Read page len fail");
         return -1;
       }
       
@@ -395,7 +406,7 @@ int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {
       // verify each byte written matches what is returned by bootloader
       for (int i = 0; i < reply_len; i++) {        
         if (read_buffer[i] != buffer[i + 3]) {
-          getDebugSerial()->print("Read page does not match write buffer at position "); getDebugSerial()->println(i, DEC);
+          getDebugSerial()->print("Verify page fail @ "); getDebugSerial()->println(i, DEC);
           verified = false;
           break;
         }
@@ -406,7 +417,7 @@ int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {
         //if (z < PROG_PAGE_RETRIES) {
         //  getDebugSerial()->println("Failed to verify page.. retrying");
         //} else {
-          getDebugSerial()->println("Failed to verify page");
+          getDebugSerial()->println("Verify page fail");
         //}
         
         // disable retries
@@ -454,7 +465,7 @@ void setup() {
   nss.begin(9600);  
   xbee.setSerial(nss);
   
-  getDebugSerial()->println("XBee Sketcher is Ready!");
+  getDebugSerial()->println("XBee Sketcher!");
 }
 
 void forwardPacket() {
@@ -491,7 +502,7 @@ void sendByte(uint8_t b, bool escape) {
 
 int flash(int start_address, int size) {
   // now read from eeprom and program
-  getDebugSerial()->println("Programming arduino from eeprom...");
+  getDebugSerial()->println("Flashing from eeprom...");
   
   long start = millis();
   
@@ -555,12 +566,53 @@ int flash(int start_address, int size) {
     return -1;       
   }
   
-  getDebugSerial()->print("Completed programming in "); getDebugSerial()->print(millis() - start, DEC); getDebugSerial()->println("ms");
+  getDebugSerial()->print("Flash in "); getDebugSerial()->print(millis() - start, DEC); getDebugSerial()->println("ms");
   getDebugSerial()->println("ok");
   
   return 0;
 }
 
+void bounce() {    
+    clear_read();
+    
+    // Bounce the reset pin
+    getDebugSerial()->println("Bouncing the Arduino");
+    // set reset pin low
+    digitalWrite(resetPin, LOW);
+    delay(200);
+    digitalWrite(resetPin, HIGH);
+    delay(300);
+    in_bootloader = true;
+}
+
+int sendMessageToProgrammer(uint8_t status) {
+  payload[0] = status;
+  // TODO set frame id with millis & 256
+  xbee.send(tx);
+  
+  // after sending a tx request, we expect a status response
+  // wait up to half second for the status response
+  if (xbee.readPacket(1000)) {    
+    if (xbee.getResponse().getApiId() == ZB_TX_STATUS_RESPONSE) {
+      xbee.getResponse().getZBTxStatusResponse(txStatus);
+
+      // get the delivery status, the fifth byte
+      if (txStatus.isSuccess()) {
+        // good
+        return 0;
+      } else {
+        getDebugSerial()->println("TX fail");
+      }
+    }      
+  } else if (xbee.getResponse().isError()) {
+    getDebugSerial()->print("TX error:");  
+    getDebugSerial()->print(xbee.getResponse().getErrorCode());
+  } else {
+    getDebugSerial()->println("TX timeout");  
+  } 
+  
+  return -1;
+}
         
 void handlePacket() {
     // if programming start magic packet is received:
@@ -571,7 +623,7 @@ void handlePacket() {
 
     if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE) {
       
-      getDebugSerial()->println("RX pckt");
+      getDebugSerial()->println("RX");
       
       // now fill our zb rx class
       xbee.getResponse().getZBRxResponse(rx);
@@ -581,10 +633,12 @@ void handlePacket() {
         if (rx.getData(2) == CONTROL_PROG_REQUEST) {
          // start
 
-          getDebugSerial()->println("Prog start pckt");
+          getDebugSerial()->println("Start");
           
           if (in_prog) {
             getDebugSerial()->println("Error: in prog"); 
+            // TODO send error to client
+            return;
           }
 
           // TODO tell Arduino it's about to be flashed
@@ -595,18 +649,20 @@ void handlePacket() {
           packet_count = 0;
           
           // size in bytes
-          prog_size = rx.getData(3) << 8 + rx.getData(4);
+          prog_size = (rx.getData(3) << 8) + rx.getData(4);
           // num packets to be sent   
-          num_packets = rx.getData(5) << 8 + rx.getData(6);            
+          num_packets = rx.getData(5) << 8 + rx.getData(6);   
+           
+          sendMessageToProgrammer(OK);               
         } else if (rx.getData(2) == CONTROL_PROG_DATA && in_prog) {
           packet_count++;
           
           // header
-//				MAGIC_BYTE1, 
-//				MAGIC_BYTE2, 
-//				CONTROL_PROG_DATA, 
-//				(address16 >> 8) & 0xff, 
-//				address16 & 0xff
+//        MAGIC_BYTE1, 
+//        MAGIC_BYTE2, 
+//        CONTROL_PROG_DATA, 
+//        (address16 >> 8) & 0xff, 
+//        address16 & 0xff
 
           int address = (rx.getData(3) << 8) + rx.getData(4); 
           
@@ -645,29 +701,34 @@ void handlePacket() {
           
           // TODO write a checksum in eeprom header so we can verify prior to flashing                          
           // prog data
+
+          sendMessageToProgrammer(OK);          
         } else if (rx.getData(2) == CONTROL_FLASH_START && in_prog) {
           // done verify we got expected # packets
 
-          getDebugSerial()->println("flash pckt");
+          getDebugSerial()->println("Flashing");
           
           // TODO verify that's what we've received            
+          // NOTE redundant we have prog_size
           int psize = (rx.getData(3) << 8) + rx.getData(4);
           
-          getDebugSerial()->print("prog size is "); getDebugSerial()->print(psize, DEC); getDebugSerial()->print("cur addr is "); getDebugSerial()->println(current_eeprom_address - EEPROM_OFFSET_ADDRESS, DEC);
+          //getDebugSerial()->print("prog size "); getDebugSerial()->print(psize, DEC); getDebugSerial()->print("cur addr "); getDebugSerial()->println(current_eeprom_address - EEPROM_OFFSET_ADDRESS, DEC);
                     
           if (psize != current_eeprom_address - EEPROM_OFFSET_ADDRESS) {
-              getDebugSerial()->println("Unable to flash we wrote X bytes but there are Y bytes in this sketch");
+              //getDebugSerial()->println("Last pckt address != prog_size");
               return;              
-          }
-
-          getDebugSerial()->println("Received flash init packet");            
+          } else if (psize != prog_size) {
+              getDebugSerial()->println("psize != prog_size");            
+              return;            
+          }         
 
           if (flash(EEPROM_OFFSET_ADDRESS, prog_size) != 0) {
-            getDebugSerial()->println("Flash failure");                          
-            // TODO send result to remote
+            getDebugSerial()->println("Flash failure");   
+            sendMessageToProgrammer(FAILURE);            
             return; 
           } else {
-            getDebugSerial()->println("Success!");                          
+            getDebugSerial()->println("Success!");    
+            sendMessageToProgrammer(OK);            
           }
                             
           // reset everything
@@ -675,18 +736,19 @@ void handlePacket() {
         } else {
           // sync error, not expecting prog data   
           // TODO send error. client needs to start over
-          getDebugSerial()->println("Got prog packet but not in prog mode");
+          getDebugSerial()->println("not-in-prog");
         }
         
         last_packet = millis();
       } else {
         // not a programming packet
-        dump_buffer(xbee.getResponse().getFrameData(), "Not prog packet", xbee.getResponse().getFrameDataLength());
+        //dump_buffer(xbee.getResponse().getFrameData(), "Not prog packet", xbee.getResponse().getFrameDataLength());
+        // TODO FORWARD
       }
       
-      if (in_prog == false) {
-        forwardPacket();
-      }
+//      if (in_prog == false) {
+//        forwardPacket();
+//      }
     }  
 }
 
@@ -700,15 +762,15 @@ void loop() {
     // NOTE the target sketch should ignore any programming packets it receives as that is an indication of a failed programming attempt
     handlePacket();
   } else if (xbee.getResponse().isError()) {
-    getDebugSerial()->println("RX error in loop:");
+    getDebugSerial()->println("RX error: ");
     getDebugSerial()->println(xbee.getResponse().getErrorCode(), DEC);
   }  
   
   if (in_prog && millis() - last_packet > 5000) {
     // timeout
-    getDebugSerial()->println("Programming timeout");    
+    getDebugSerial()->println("Prog timeout");    
     in_prog = false;
-    // clear eeprom
+    // TODO clear eeprom
   }
   
   if (in_prog && last_packet > 0 && millis() - last_packet > XBEE_TIMEOUT) {
@@ -720,8 +782,10 @@ void loop() {
     
     // pass all data (xbee packets) from remote out the xbee serial port
     // we don't need to do anything with these packets
-    while (getProgrammerSerial()->available() > 0) {
-      getXBeeSerial()->write(getProgrammerSerial()->read()); 
-    }    
+    
+    // TODO
+//    while (getProgrammerSerial()->available() > 0) {
+//      getXBeeSerial()->write(getProgrammerSerial()->read()); 
+//    }    
   }
 }

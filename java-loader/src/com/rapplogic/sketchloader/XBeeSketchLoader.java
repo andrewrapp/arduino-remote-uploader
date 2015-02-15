@@ -2,12 +2,16 @@ package com.rapplogic.sketchloader;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.List;
 
+import com.google.common.collect.Lists;
+import com.rapplogic.xbee.api.ApiId;
 import com.rapplogic.xbee.api.PacketListener;
 import com.rapplogic.xbee.api.XBee;
 import com.rapplogic.xbee.api.XBeeAddress64;
 import com.rapplogic.xbee.api.XBeeException;
 import com.rapplogic.xbee.api.XBeeResponse;
+import com.rapplogic.xbee.api.zigbee.ZNetRxResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
 
@@ -25,6 +29,11 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 	final int CONTROL_WRITE_EEPROM = 0x20; 	//100000
 	// somewhat redundant
 	final int CONTROL_START_FLASH = 0x40; 	//1000000
+	
+	final int OK = 1;
+	final int FAILURE = 2;
+	
+	final Object lock = new Object();
 	
 	private int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage) {
 		return new int[] { 
@@ -56,27 +65,27 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 	
 	private int[] getFlashStartHeader(int progSize) {
 		return getHeader(CONTROL_START_FLASH, progSize);
+	}	
+	
+	private void waitForAck() throws InterruptedException {
+		synchronized (lock) {
+			long now = System.currentTimeMillis();
+			
+			lock.wait(10000);
+			
+			if (System.currentTimeMillis() - now >= 10000) {
+				throw new RuntimeException("Timeout");
+			}
+			
+			if (messages.get(0).intValue() == OK) {
+				System.out.println("Got ACK");
+			} else {
+				throw new RuntimeException("Sketch failed");
+			}
+		}
 	}
-	
 
-//	private int[] getFlashStart(int address16) {
-//		return new int[] { 
-//				MAGIC_BYTE1, 
-//				MAGIC_BYTE2, 
-//				CONTROL_START_FLASH
-//		};
-//	}
-	
-//	private int[] getLast(int address16, int sizeInBytes) {
-//		return new int[] {
-//				MAGIC_BYTE1, 
-//				MAGIC_BYTE2, 
-//				CONTROL_START_FLASH,
-//				(sizeInBytes >> 8) & 0xff, 
-//				sizeInBytes & 0xff, 				
-//		};
-//	}
-	
+	final List<Integer> messages = Lists.newArrayList();
 	
 	public void process(String file, String device, int speed, String xbeeAddress) throws IOException {
 		// page size is max packet size for the radio
@@ -90,7 +99,16 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			xbee.addPacketListener(new PacketListener() {
 				@Override
 				public void processResponse(XBeeResponse response) {
-
+					System.out.println("Received message from sketcher " + response);
+					if (response.getApiId() == ApiId.ZNET_RX_RESPONSE) {
+						ZNetRxResponse zb = (ZNetRxResponse) response;
+						messages.clear();
+						messages.add(zb.getData()[0]);
+						
+						synchronized (lock) {
+							lock.notify();
+						}
+					}
 				}
 			});
 			
@@ -113,6 +131,8 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 				throw new RuntimeException("Failed to delivery programming start packet " + response);
 			}
 			
+			waitForAck();
+			
 			for (Page page : sketch.getPages()) {
 				// send to radio, one page at a time
 				// TODO handle errors and retries
@@ -128,8 +148,10 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 					throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", response " + response);
 				}
 				
-				// until we get ack put in delay or softserial buffer overruns
-				Thread.sleep(500);
+				// wait for ACK
+				waitForAck();
+//				// until we get ack put in delay or softserial buffer overruns
+//				Thread.sleep(500);
 			}
 
 			System.out.println("Sending flash start packet " + getFlashStartHeader(sketch.getSize()));
@@ -139,8 +161,8 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 				throw new RuntimeException("Flash start packet failed to deliver " + response);					
 			}
 			
-			// TODO wait for rx packet to indicate success or failure
-			// whoa, need ACK
+			waitForAck();
+			
 			System.out.println("\nI think I Successfully flashed Arduino!");
 			
 			xbee.close();

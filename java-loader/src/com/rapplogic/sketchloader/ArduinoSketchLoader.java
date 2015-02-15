@@ -377,7 +377,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		int[] program = parseIntelHex(hex);
 		Sketch sketch = getSketch(hex, ARDUINO_PAGE_SIZE);	
 		
-		System.out.println("Program length is " + program.length + ", there are " + sketch.getPages().size() + " pages");
+		System.out.println("Sending sketch to Arduino via serial. Program length is " + program.length + ", there are " + sketch.getPages().size() + " pages");
 		
 		this.openSerial(device, BAUD_RATE);
 		
