@@ -79,7 +79,7 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			}
 			
 			if (messages.get(0).intValue() == OK) {
-				System.out.println("Got ACK");
+//				System.out.println("Got ACK");
 			} else {
 				throw new RuntimeException("Sketch failed");
 			}
@@ -143,7 +143,7 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 				
 				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16()), page.getData());
 				System.out.println("Sending page with address " + page.getRealAddress16() + ", packet " + toHex(data));
-				System.out.println("Data " + toHex(page.getData()));
+//				System.out.println("Data " + toHex(page.getData()));
 				
 				response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, data));
 				
