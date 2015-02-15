@@ -6,7 +6,7 @@ This is just a proof of concept for writing a sketch to eeprom and reading it ba
 */
 
 // disable or bootloader timesout due to delays between prog_page
-#define VERBOSE true
+#define VERBOSE false
 
 // only need 128=> + 4 bytes len/addr
 #define BUFFER_SIZE 150
@@ -160,6 +160,7 @@ void update_last_command() {
 // Send command and buffer and return length of reply
 int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
 
+    /*
     if (VERBOSE) {
       if (command == STK_GET_PARAMETER) {
         getDebugSerial()->print("send() STK_GET_PARAMETER: "); getDebugSerial()->println(command, HEX);  
@@ -180,6 +181,11 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
       } else {
         getDebugSerial()->print("send() unexpected command: "); getDebugSerial()->println(command, HEX);          
       }
+    }
+    */
+    
+    if (VERBOSE) {
+     getDebugSerial()->print("send() command: "); getDebugSerial()->println(command, HEX);       
     }
     
     getProgrammerSerial()->write(command);
@@ -426,13 +432,7 @@ send()->: 83
 send_reply: 14,3,10
 send() STK_READ_SIGN: 75
 send_reply: 14,1E,94,6,10
-*/
-    
-  delay(5000);
-  bounce();
-  flash_init();
-  
-  while (1);  
+*/ 
 }
 
 // called after each page is completed
@@ -456,7 +456,7 @@ int last_write_address = start_address;
 
 int eeprom_write(uint8_t *buf, int len) {
   //don't forget to divide by 2 when sending load address!
-  getDebugSerial()->print("Writing to eeprom at adddress: "); getDebugSerial()->print(last_write_address, DEC); getDebugSerial()->print(", length: "); getDebugSerial()->println(len, DEC);
+  getDebugSerial()->print("Writing to eeprom address: "); getDebugSerial()->print(last_write_address, DEC); getDebugSerial()->print(", length: "); getDebugSerial()->println(len, DEC);
   int ok = eeprom.write(last_write_address, buf, len);
   last_write_address+= len;
 
@@ -494,12 +494,8 @@ void loop() {
     } else if (pos == (page_len - 1) && prog_mode) {
       // complete page
       buffer[pos] = b;
-      
-      if (is_first_page) {
-        // first page, reset the target and perform check      
-      }
-      
-      //dump_buffer(buffer, "eeprom write", 4, page_len - 4);
+
+      //dump_buffer(buffer + 4, "eeprom write", page_len - 4);
 
       // substract 4 since we don't send our header bytes to the bootloader        
       // skip address and just write data to eeprom
@@ -577,6 +573,7 @@ void loop() {
         
         getDebugSerial()->println("Completed programming");
         getDebugSerial()->println("ok");
+        getDebugSerial()->flush();
         
         progReset();      
         continue; 
