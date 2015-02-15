@@ -60,8 +60,10 @@
 #define OK 1
 #define FAILURE 2
 
+// SCRATCH -----------------------> finally success 2/15/15 10:12AM: Flash in 2174ms!
+
 // due to my flagrant use of Serial.println, the leonardo will go out of sram if version is true :(
-#define VERBOSE true
+#define VERBOSE false
 
 // WIRING:
 // unfortunately we can use an xbee shield because we need the serial port for programming. gotta use XBee with softserial
@@ -636,6 +638,8 @@ void handlePacket() {
         } else if (rx.getData(2) == CONTROL_PROG_DATA && in_prog) {
           packet_count++;
           
+          // data starts at 16 (12 bytes xbee header + data header
+          //dump_buffer(xbee.getResponse().getFrameData() + 16, "packet", xbee.getResponse().getFrameDataLength() - 16);
           // header
 //        MAGIC_BYTE1, 
 //        MAGIC_BYTE2, 
@@ -664,15 +668,26 @@ void handlePacket() {
           // NOTE we've made it idempotent in case we get retries
           // TODO validate it's in range            
           current_eeprom_address = address + EEPROM_OFFSET_ADDRESS;
+
+            //dump_buffer(xbee.getResponse().getFrameData() + 16, "packet", xbee.getResponse().getFrameDataLength() - 16);
             
-          for (int i = 5; i < rx.getDataLength(); i++) {  
-            // TODO get array from xbee and write block instead for better performance  
-            if (eeprom.write(current_eeprom_address, rx.getData(i)) != 0) {
+            uint8_t len = xbee.getResponse().getFrameDataLength() - 16;
+            
+            if (eeprom.write(current_eeprom_address, xbee.getResponse().getFrameData() + 16, len) != 0) {
               getDebugSerial()->println("EEPROM write failure");
-              return;
+              return;              
             }
-            current_eeprom_address++;
-          }  
+
+            current_eeprom_address+= len;
+            
+//          for (int i = 5; i < rx.getDataLength(); i++) {  
+//            // TODO get array from xbee and write block instead for better performance  
+//            if (eeprom.write(current_eeprom_address, rx.getData(i)) != 0) {
+//              getDebugSerial()->println("EEPROM write failure");
+//              return;
+//            }
+//            current_eeprom_address++;
+//          }  
 
           if (packet_count == num_packets) {
             // should be last packet but maybe not if we got retries 
@@ -721,7 +736,6 @@ void handlePacket() {
         last_packet = millis();
       } else {
         // not a programming packet
-        //dump_buffer(xbee.getResponse().getFrameData(), "Not prog packet", xbee.getResponse().getFrameDataLength());
         // TODO FORWARD
       }
       

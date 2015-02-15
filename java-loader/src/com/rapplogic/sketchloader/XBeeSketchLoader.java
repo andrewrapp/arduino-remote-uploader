@@ -141,6 +141,8 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 				
 				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16()), page.getData());
 				System.out.println("Sending page with address " + page.getRealAddress16() + ", packet " + toHex(data));
+				System.out.println("Data " + toHex(page.getData()));
+				
 				response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, data));
 				
 				if (response.isSuccess() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
