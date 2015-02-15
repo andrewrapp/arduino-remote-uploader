@@ -104,10 +104,16 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 					if (response.getApiId() == ApiId.ZNET_RX_RESPONSE) {
 						ZNetRxResponse zb = (ZNetRxResponse) response;
 						messages.clear();
-						messages.add(zb.getData()[0]);
 						
-						synchronized (lock) {
-							lock.notify();
+						// TODO use magic packet. this is weak
+						if (zb.getData()[0] == OK || zb.getData()[0] == FAILURE) {
+							messages.add(zb.getData()[0]);
+							
+							synchronized (lock) {
+								lock.notify();
+							}							
+						} else {
+							System.out.println("Ignoring non-programming packet " + zb);
 						}
 					}
 				}
@@ -170,6 +176,10 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			
 			System.out.println("\nSuccessfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
 			
+			synchronized(this) {
+				this.wait();				
+			}
+
 			xbee.close();
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -188,7 +198,8 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException {
 		// sketch hex file, device, speed, xbee address, radio_type  
 		//new XBeeSketchLoader().process(args[0], args[1], Integer.parseInt(args[2]), args[3]);
-		new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/HelloTest.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
+		//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/HelloTest.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
+		new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/TestXBeeOnTarget.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
 		
 	}
 }

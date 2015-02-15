@@ -8,7 +8,9 @@
 // due to my flagrant use of Serial.println, the leonardo will go out of sram if version is true :(
 #define VERBOSE false
 // print debug to debug serial
-#define DEBUG false
+#define DEBUG true
+// TODO
+#define USBDEBUG
 
 // should we proxy serial rx/tx to softserial (xbee)
 #define PROXY_SERIAL true
@@ -71,19 +73,16 @@
 #define FAILURE 2
 
 // WIRING:
-// unfortunately we can use an xbee shield because we need the serial port for programming. gotta use XBee with softserial
-// optiboot needs 115.2 so softserial is not an option
-// consider flashing optiboot @ 19.2 so softserial is viable
-
-// another configuration that might work if the target is wired to the radio: it writes to the eeprom then tells it's friend to program it. this only works if two arduinos can be on the same i2c bus
-
-// WHY THIS?? lots of reasons but ultimately we are not really wireless if we need to plug our projects into a cable to program them.
-// works with any speed wireless, does not need to match the bootloader baud rate or timeout
+// unfortunately we can't use an xbee shield because we need the serial port for programming. Instead the XBee must use softserial. You can use the shield and wire the 5V,GND,TX/RX of the shield to Arduino
+// Optiboot needs 115.2 so softserial is not an option
+// Consider modifying optiboot to run @ 19.2 so softserial is viable (on programming, still of course need serial on target)
 
 // TROUBLESHOOTING. 
-// if flash_init fails with 0,0,0 response you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) is at 115200
+// if flash_init fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) wired correction and is at 115200
 
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
+// NOTE: Weird things can happen if you have too many debug/println statements as each string literal consumes memory. If the sketch runs out of memeory of course it doesn't function and in some cases it also inhibits Leonardo from uploading sketches
+// Keep your print statements short and concise. If you can't upload, power on leonardo and upload a blank sketch and that should fix it.
 
 const int softTxPin = 11;
 const int softRxPin = 12;
@@ -155,9 +154,11 @@ Stream* getXBeeSerial() {
   return &nss;  
 }
 
-Stream* getDebugSerial() {
-  return &Serial;  
-}
+#ifdef USBDEBUG
+  Stream* getDebugSerial() {
+    return &Serial;  
+  }
+#endif
 
 void clear_read() {
   int count = 0;
@@ -600,7 +601,7 @@ void bounce() {
 
 int sendMessageToProgrammer(uint8_t status) {
   xbeeTxPayload[0] = status;
-  // TODO set frame id with millis & 256
+  // TODO send with magic packet host can differentiate between relayed packets and programming ACKS
   xbee.send(tx);
   
   // after sending a tx request, we expect a status response
@@ -845,30 +846,25 @@ void loop() {
     }
   }  
   
-  if (in_prog && millis() - last_packet > 5000) {
+  if (in_prog && last_packet > 0 && (millis() - last_packet) > XBEE_TIMEOUT) {
     // timeout
     if (DEBUG) {    
       getDebugSerial()->println("Prog timeout");    
     }
-    in_prog = false;
-    // TODO clear eeprom
-  }
-  
-  if (in_prog && last_packet > 0 && millis() - last_packet > XBEE_TIMEOUT) {
+    
     prog_reset();
   }
   
-  if (!in_prog) {
-    // check if this has magic bytes before forwarding
-    
-    // pass all data (xbee packets) from remote out the xbee serial port
-    // we don't need to do anything with these packets
-    
+  // don't need to test in_prog. if in prog we are just collecting packets so can keep relaying. when flashing, it's blocking so will never get here
+//  if (!in_prog) {
+    // forward packets from target out the radio
     // test
     if (PROXY_SERIAL) {
       while (getProgrammerSerial()->available() > 0) {
+        // FIXME getting packets but not wellformed it seems
+        getDebugSerial()->print("relaying app packet");
         getXBeeSerial()->write(getProgrammerSerial()->read()); 
       }      
     }
-  }
+  //}
 }
