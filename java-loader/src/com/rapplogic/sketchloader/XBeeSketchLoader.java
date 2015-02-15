@@ -14,6 +14,7 @@ import com.rapplogic.xbee.api.XBeeResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetRxResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
+import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse.DeliveryStatus;
 
 public class XBeeSketchLoader extends ArduinoSketchLoader {
 
@@ -127,8 +128,8 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			System.out.println("Sending sketch to xbee radio with address " + xBeeAddress64.toString() + ", size (bytes) " + sketch.getSize() + ", packets " + sketch.getPages().size() + ", packet size " + sketch.getBytesPerPage());			
 			ZNetTxStatusResponse response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));			
 			
-			if (response.isError()) {
-				throw new RuntimeException("Failed to delivery programming start packet " + response);
+			if (response.isError() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
+				throw new RuntimeException("Failed to deliver programming start packet " + response);
 			}
 			
 			waitForAck();
@@ -142,7 +143,7 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 				System.out.println("Sending page with address " + page.getRealAddress16() + ", packet " + toHex(data));
 				response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, data));
 				
-				if (response.isSuccess()) {
+				if (response.isSuccess() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
 //					System.out.print("#");					
 				} else {
 					throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", response " + response);
@@ -157,7 +158,7 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			System.out.println("Sending flash start packet " + getFlashStartHeader(sketch.getSize()));
 			response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getFlashStartHeader(sketch.getSize())));
 
-			if (response.isError()) {
+			if (response.isError() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
 				throw new RuntimeException("Flash start packet failed to deliver " + response);					
 			}
 			

@@ -107,26 +107,14 @@ void clear_read() {
   }
 }
 
+// returns bytes read, -1 if error
 int read_response(uint8_t len, int timeout) {
   long start = millis();
   int pos = 0;
-  
-//  if (VERBOSE) {
-    //getDebugSerial()->print("read_response() expecting reply len: "); getDebugSerial()->println(len, DEC);    
-//  }
 
-  while (millis() - start < timeout) {
-    
-//    getDebugSerial()->println("waiting for response");
-          
+  while (millis() - start < timeout) {          
     if (getProgrammerSerial()->available() > 0) {
       read_buffer[pos] = getProgrammerSerial()->read();
-      
-      // extra verbose
-//      if (VERBOSE) {
-//        getDebugSerial()->print("read_response()<-"); getDebugSerial()->println(read_buffer[pos], HEX);        
-//      }
-
       pos++;
       
       if (pos == len) {
@@ -143,11 +131,11 @@ int read_response(uint8_t len, int timeout) {
     return pos;
   }
   
-  getDebugSerial()->print("read_response() timeout! read "); getDebugSerial()->print(pos, DEC); getDebugSerial()->print(" bytes but expected "); getDebugSerial()->print(len, DEC); getDebugSerial()->println(" bytes");
+  // TODO return error code instead of strings that take up precious memeory
+  getDebugSerial()->print("read timeout! got "); getDebugSerial()->print(pos, DEC); getDebugSerial()->print(" byte, expected "); getDebugSerial()->print(len, DEC); getDebugSerial()->println(" bytes");
   return -1;
 }
 
-// TODO get rid of offset, just send the pointer to start at
 void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
   getDebugSerial()->print(context);
   getDebugSerial()->print(": ");
@@ -163,6 +151,7 @@ void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
   getDebugSerial()->println("");
   getDebugSerial()->flush();
 }
+
 
 void update_last_command() {
   last_optiboot_cmd = millis();  
@@ -263,7 +252,7 @@ void bounce() {
     bounced = true;
 }
 
-int initTarget() {
+int flash_init() {
   clear_read();
     
     int data_len = 0;
@@ -401,7 +390,7 @@ int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {
 
 void setup() {
   // necessary to avoid bootloader timeouts. try faster speeds
-  //Serial.begin(115200);
+  // usb-serial @19200 could go higher
   Serial.begin(19200);
   
   // leonardo wait for serial
@@ -418,6 +407,32 @@ void setup() {
     getDebugSerial()->println("eeprom failure");
     return;  
   }
+  
+  getDebugSerial()->println("Ready");
+
+/*
+Ready
+Bouncing the Arduino
+send() STK_GET_PARAMETER: 41
+send()->: 81
+send_reply: 14,5,10
+Firmware: 5
+send() STK_GET_PARAMETER: 41
+send()->: 82
+send_reply: 14,0,10
+Minor: 0
+send() STK_GET_PARAMETER: 41
+send()->: 83
+send_reply: 14,3,10
+send() STK_READ_SIGN: 75
+send_reply: 14,1E,94,6,10
+*/
+    
+  delay(5000);
+  bounce();
+  flash_init();
+  
+  while (1);  
 }
 
 // called after each page is completed
@@ -499,7 +514,7 @@ void loop() {
         
         bounce();
 
-        if (initTarget() != 0) {
+        if (flash_init() != 0) {
           getDebugSerial()->println("Check failed!"); 
           progReset();
           return;

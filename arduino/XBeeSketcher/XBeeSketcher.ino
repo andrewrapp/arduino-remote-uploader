@@ -73,9 +73,12 @@
 // WHY THIS?? lots of reasons but ultimately we are not really wireless if we need to plug our projects into a cable to program them.
 // works with any speed wireless, does not need to match the bootloader baud rate or timeout
 
+// TROUBLESHOOTING. 
+// if flash_init fails with 0,0,0 response you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) is at 115200
+
 const int softTxPin = 11;
 const int softRxPin = 12;
-const int resetPin = 10;
+const int resetPin = 8;
 
 const int PROG_PAGE_RETRIES = 2;
 const int EEPROM_OFFSET_ADDRESS = 16;
@@ -192,7 +195,6 @@ int read_response(uint8_t len, int timeout) {
   return -1;
 }
 
-// TODO get rid of offset, just send the pointer to start at
 void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
   getDebugSerial()->print(context);
   getDebugSerial()->print(": ");
@@ -445,29 +447,6 @@ void prog_reset() {
   current_eeprom_address = EEPROM_OFFSET_ADDRESS;
 }
 
-void setup() {
-  // start usb serial on leonardo for debugging
-  Serial.begin(9600);
-  // leonardo wait for serial
-  while (!Serial);
-  
-  pinMode(resetPin, OUTPUT);
-  
-  // uart is for programming
-  Serial1.begin(9600);
-  
-  if (eeprom.begin(twiClock400kHz) != 0) {
-    getDebugSerial()->println("eeprom failure");
-    return;  
-  }
-  
-  // we only have one Serial port (UART) so need nss for XBee
-  nss.begin(9600);  
-  xbee.setSerial(nss);
-  
-  getDebugSerial()->println("XBee Sketcher!");
-}
-
 void forwardPacket() {
   // not programming packet, so proxy all xbee traffic to Arduino
   // prob cleaner way to do this if I think about it some more
@@ -573,8 +552,8 @@ int flash(int start_address, int size) {
 }
 
 void bounce() {    
-    clear_read();
-    
+    //clear_read();
+
     // Bounce the reset pin
     getDebugSerial()->println("Bouncing the Arduino");
     // set reset pin low
@@ -750,6 +729,32 @@ void handlePacket() {
 //        forwardPacket();
 //      }
     }  
+}
+
+void setup() {
+  // start usb serial on leonardo for debugging
+  // usb-serial @19200 could go higher  
+  Serial.begin(19200);
+  
+  // leonardo wait for serial
+  while (!Serial);
+  
+  pinMode(resetPin, OUTPUT);
+  
+  // optiboot is 115.2K
+  // uart is for programming
+  Serial1.begin(115200);
+  
+  if (eeprom.begin(twiClock400kHz) != 0) {
+    getDebugSerial()->println("eeprom failure");
+    return;  
+  }
+  
+  // we only have one Serial port (UART) so need nss for XBee
+  nss.begin(9600);  
+  xbee.setSerial(nss);
+
+  getDebugSerial()->println("Ready!");
 }
 
 void loop() {   
