@@ -19,7 +19,7 @@ import java.util.TooManyListenersException;
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 
-public class ArduinoSketchLoader implements SerialPortEventListener {
+public class SerialSketchLoader implements SerialPortEventListener {
 
 	final int FIRST_PAGE = 0xd;
 	final int LAST_PAGE = 0xf;
@@ -35,7 +35,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
     private StringBuffer strBuf = new StringBuffer();
     private Object pageAck = new Object();
     
-	public ArduinoSketchLoader() {
+	public SerialSketchLoader() {
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
 			@Override
 			public void run() {
@@ -344,6 +344,6 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 	
 	// of course you can't use the arduino serial monitor with this since it needs exclusive access to the usb-serial port
 	public static void main(String[] args) throws Exception {		
-		new ArduinoSketchLoader().process(args[0], args[1]);
+		new SerialSketchLoader().process(args[0], args[1]);
 	}
 }

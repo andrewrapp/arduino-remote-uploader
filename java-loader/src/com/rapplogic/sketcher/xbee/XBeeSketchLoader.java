@@ -5,7 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import com.google.common.collect.Lists;
-import com.rapplogic.sketcher.ArduinoSketchLoader;
+import com.rapplogic.sketcher.SerialSketchLoader;
 import com.rapplogic.sketcher.Page;
 import com.rapplogic.sketcher.Sketch;
 import com.rapplogic.xbee.api.ApiId;
@@ -19,7 +19,7 @@ import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse.DeliveryStatus;
 
-public class XBeeSketchLoader extends ArduinoSketchLoader {
+public class XBeeSketchLoader extends SerialSketchLoader {
 
 	public XBeeSketchLoader() {
 		super();
