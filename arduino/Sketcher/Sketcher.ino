@@ -4,20 +4,9 @@
 
 // This may be useful for cases where you want to program an Arduino that doesn't have a usb port, (Arduino Pro, breadboard arduino etc), and you don't have a FTDI cable/board handy.
 // In this situation, wire the Arduino to program to a usb Arduino and send to program
-
-// the idea of sketcher is to provide remote programming in an transport agnositic fashion, bring your own wireless. Initially I plan to support xbee, nordic, wifi (ebay e***) 
+// The programmer Arduino must be a Leonardo or other Arduino variant with at least 2 serial ports
 
 // This sketch "uploads" a sketch to a Arduino (with Optiboot) via Serial @ 115.2K
-
-// NEXT:
-//  Break sketch into two parts: receive the sketch and write to EEPROM and upload from EEPROM
-//  The first part will be specific to the wireless transport to received the sketch while the 
-//  second will work for any transport
-
-// Uploader: should be a simple function call. Returns success for an error code
-// Transporter: Define the protocol. Header: how many bytes per packet, how many packets, a checksum, retries etc
-
-// write to EEPROM starting at n+m, with header at n. Header should indicate address of program start and length
 
 // Programmer: Arduino Leonardo. Runs this Sketch
 // Target: Arduino Diecimila (168) with Optiboot 5.0a. Could be any optiboot enabled Arduino

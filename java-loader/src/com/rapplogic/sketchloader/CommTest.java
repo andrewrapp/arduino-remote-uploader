@@ -2,10 +2,12 @@ package com.rapplogic.sketchloader;
 
 import java.io.IOException;
 
+import com.rapplogic.xbee.api.PacketListener;
 import com.rapplogic.xbee.api.XBee;
 import com.rapplogic.xbee.api.XBeeAddress64;
 import com.rapplogic.xbee.api.XBeeConfiguration;
 import com.rapplogic.xbee.api.XBeeException;
+import com.rapplogic.xbee.api.XBeeResponse;
 import com.rapplogic.xbee.api.XBeeTimeoutException;
 import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
@@ -20,9 +22,17 @@ public class CommTest {
 	
 	public void test() throws XBeeTimeoutException, XBeeException {
 		XBee xbee = new XBee();
-	
+		
 		// yellow star
 		xbee.open("/dev/tty.usbserial-A6005uRz", 9600);
+
+		xbee.addPacketListener(new PacketListener() {
+			
+			@Override
+			public void processResponse(XBeeResponse response) {
+				System.out.println("Received RX packet " + response);
+			}
+		});
 		
 		// green star
 		XBeeAddress64 addr64 = new XBeeAddress64("0013A200408B98FF");

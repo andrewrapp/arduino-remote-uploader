@@ -33,6 +33,7 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 	
 	final int OK = 1;
 	final int FAILURE = 2;
+	// TODO TIMEOUT
 	
 	final Object lock = new Object();
 	
@@ -199,7 +200,7 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 		// sketch hex file, device, speed, xbee address, radio_type  
 		//new XBeeSketchLoader().process(args[0], args[1], Integer.parseInt(args[2]), args[3]);
 		//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/HelloTest.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
-		new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/TestXBeeOnTarget.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
-		
+		//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/TestXBeeOnTarget.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
+		new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
 	}
 }

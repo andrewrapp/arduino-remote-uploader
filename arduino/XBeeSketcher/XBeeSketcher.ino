@@ -470,6 +470,10 @@ void forwardPacket() {
   // not programming packet, so proxy all xbee traffic to Arduino
   // prob cleaner way to do this if I think about it some more
   
+  if (DEBUG) {
+    getDebugSerial()->println("Forwarding packet");    
+  }
+        
   // send start byte, length, api, then frame data + checksum
   sendByte(0x7d, false);
   sendByte(xbee.getResponse().getMsbLength(), true);
@@ -479,7 +483,7 @@ void forwardPacket() {
   uint8_t* frameData = xbee.getResponse().getFrameData();
    
    for (int i = 0; i < xbee.getResponse().getFrameDataLength(); i++) {
-  sendByte(*(frameData + i), true);
+    sendByte(*(frameData + i), true);
    }
    
    sendByte(xbee.getResponse().getChecksum(), true);  
@@ -504,7 +508,7 @@ int flash(int start_address, int size) {
   long start = millis();
   
   bounce();
-        
+  
   if (flash_init() != 0) {
     if (DEBUG) {
       getDebugSerial()->println("Check failed!"); 
@@ -559,7 +563,6 @@ int flash(int start_address, int size) {
       dump_buffer(buffer + 3, "read from eeprom->", len);
     }
                   
-    // flash
     if (send_page(addr, buffer, len) == -1) {
       if (DEBUG) {
         getDebugSerial()->println("Send page fail");
@@ -668,7 +671,7 @@ void handlePacket() {
 
           // reset state
           prog_reset();
-          
+                    
           // TODO tell Arduino it's about to be flashed
           // forwardPacket();
           
@@ -771,6 +774,9 @@ void handlePacket() {
             return;            
           }         
 
+          // make it fast for optiboot
+          Serial1.begin(115200);
+          
           if (flash(EEPROM_OFFSET_ADDRESS, prog_size) != 0) {
             if (DEBUG) {
               getDebugSerial()->println("Flash failure");   
@@ -779,9 +785,12 @@ void handlePacket() {
           } else {
             sendMessageToProgrammer(OK);            
           }
+          
+          // resume xbee speed
+          Serial1.begin(9600);
 
           // reset everything
-          prog_reset();                            
+          prog_reset();
         } else {
           // sync error, not expecting prog data   
           // TODO send error. client needs to start over
@@ -812,7 +821,9 @@ void setup() {
   
   // optiboot is 115.2K
   // uart is for programming
-  Serial1.begin(115200);
+  // 9600 for xbee
+  // 115.2 for flashing, set in the flash function
+  Serial1.begin(9600);
   
   if (eeprom.begin(twiClock400kHz) != 0) {
     if (DEBUG) {
@@ -830,7 +841,7 @@ void setup() {
   }
 }
 
-void loop() {   
+void loop() {  
   xbee.readPacket();
 
   // target arduino must be a 328 that is programmed via serial port
@@ -862,8 +873,10 @@ void loop() {
     if (PROXY_SERIAL) {
       while (getProgrammerSerial()->available() > 0) {
         // FIXME getting packets but not wellformed it seems
-        getDebugSerial()->print("relaying app packet");
-        getXBeeSerial()->write(getProgrammerSerial()->read()); 
+        int b = getProgrammerSerial()->read();
+        getDebugSerial()->print("relaying ");
+        getDebugSerial()->println(b, HEX);
+        getXBeeSerial()->write(b); 
       }      
     }
   //}
