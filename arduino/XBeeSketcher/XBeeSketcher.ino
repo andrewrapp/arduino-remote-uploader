@@ -12,7 +12,7 @@
 // TODO
 #define USBDEBUG
 
-// should we proxy serial rx/tx to softserial (xbee)
+// should we proxy serial rx/tx to softserial (xbee) 
 #define PROXY_SERIAL true
 
 // only need 128=> + 4 bytes len/addr
@@ -466,6 +466,18 @@ void prog_reset() {
   current_eeprom_address = EEPROM_OFFSET_ADDRESS;
 }
 
+// borrowed from xbee api. send bytes with proper escaping
+void sendByte(uint8_t b, bool escape) {
+  if (escape && (b == START_BYTE || b == ESCAPE || b == XON || b == XOFF)) {
+    getProgrammerSerial()->write(ESCAPE);    
+    getProgrammerSerial()->write(b ^ 0x20);
+  } else {
+    getProgrammerSerial()->write(b);
+  }
+  
+  getProgrammerSerial()->flush();
+}
+
 void forwardPacket() {
   // not programming packet, so proxy all xbee traffic to Arduino
   // prob cleaner way to do this if I think about it some more
@@ -475,31 +487,18 @@ void forwardPacket() {
   }
         
   // send start byte, length, api, then frame data + checksum
-  sendByte(0x7d, false);
+  sendByte(START_BYTE, false);
   sendByte(xbee.getResponse().getMsbLength(), true);
   sendByte(xbee.getResponse().getLsbLength(), true);        
   sendByte(xbee.getResponse().getApiId(), true);
-   
+
   uint8_t* frameData = xbee.getResponse().getFrameData();
    
-   for (int i = 0; i < xbee.getResponse().getFrameDataLength(); i++) {
+  for (int i = 0; i < xbee.getResponse().getFrameDataLength(); i++) {
     sendByte(*(frameData + i), true);
-   }
+  }
    
    sendByte(xbee.getResponse().getChecksum(), true);  
-}
-
-
-// borrowed from xbee api. send bytes with proper escaping
-void sendByte(uint8_t b, bool escape) {
-  if (escape && (b == START_BYTE || b == ESCAPE || b == XON || b == XOFF)) {
-    getProgrammerSerial()->write(ESCAPE);
-    getProgrammerSerial()->write(b ^ 0x20);
-  } else {
-    getProgrammerSerial()->write(b);
-  }
-  
-  getProgrammerSerial()->flush();
 }
 
 // blocking. takes about 1208ms for a small sketch (2KB)
@@ -867,17 +866,11 @@ void loop() {
   }
   
   // don't need to test in_prog. if in prog we are just collecting packets so can keep relaying. when flashing, it's blocking so will never get here
-//  if (!in_prog) {
-    // forward packets from target out the radio
-    // test
-    if (PROXY_SERIAL) {
-      while (getProgrammerSerial()->available() > 0) {
-        // FIXME getting packets but not wellformed it seems
-        int b = getProgrammerSerial()->read();
-        getDebugSerial()->print("relaying ");
-        getDebugSerial()->println(b, HEX);
-        getXBeeSerial()->write(b); 
-      }      
-    }
-  //}
+  // forward packets from target out the radio
+  if (PROXY_SERIAL) {
+    while (getProgrammerSerial()->available() > 0) {
+      int b = getProgrammerSerial()->read();
+      getXBeeSerial()->write(b); 
+    }      
+  }
 }

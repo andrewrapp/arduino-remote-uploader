@@ -176,10 +176,6 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 			waitForAck();
 			
 			System.out.println("\nSuccessfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
-			
-			synchronized(this) {
-				this.wait();				
-			}
 
 			xbee.close();
 		} catch (Exception e) {
