@@ -1,4 +1,4 @@
-package com.rapplogic.sketchloader;
+package com.rapplogic.sketcher;
 
 
 import gnu.io.CommPortIdentifier;
@@ -85,7 +85,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
     		
 	    		checksum += length + address + type;
 
-	    		System.out.println("Length is " + length + ", address is " + Integer.toHexString(address) + ", type is " + Integer.toHexString(type));
+	    		//System.out.println("Length is " + length + ", address is " + Integer.toHexString(address) + ", type is " + Integer.toHexString(type));
 	    		
                 // Ignore all record types except 00, which is a data record. 
                 // Look out for 02 records which set the high order byte of the address space
@@ -95,7 +95,7 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
                 	// Address > 16bit not supported by Arduino so not important
                 	throw new RuntimeException("Record type 4 is not implemented");
                 } else {
-                	System.out.println("Skipped: " + line);
+                	//System.out.println("Skipped: " + line);
                     continue;
                 }
                 
@@ -107,7 +107,6 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
                 // address will always be last position or we'd have gaps in the array
                 position = address;
                 
-//                System.out.println("Program position is " + position);
                 {
                 	int i = 8;
 	                // data starts at 8 (4th byte) to end minus checksum
@@ -119,24 +118,22 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 	                    position++;
 	                }	     
 	                
-	                System.out.println("Program data: " + toHex(program, position - length, length));
+	                //System.out.println("Program data: " + toHex(program, position - length, length));
 	                
 	                // we should be at the checksum position
 	                if (i != dataLine.length() - 2) {
 	                	throw new RuntimeException("Line length does not match expected length " + length);
 	                }
 	                
+	                // checksum
 	                int expectedChecksum = Integer.decode("0x" + line.substring(line.length() - 2, line.length()));
-	                System.out.println("Expected checksum is " + line.substring(line.length() - 2, line.length()));
-	                	                
+	                //System.out.println("Expected checksum is " + line.substring(line.length() - 2, line.length()));
+	                
+	                //checksum+= expectedChecksum;
+	                // TODO somethings not right
 	                checksum = 0xff - checksum & 0xff;
 	                
-	                System.out.println("Checksum is " + Integer.toHexString(checksum & 0xff));
-	                
-	                // wat??
-//		                if (checksum != expectedChecksum) {
-//		                	throw new RuntimeException("Expected checksum is " + expectedChecksum + " but actual is " + checksum);
-//		                }
+	                //System.out.println("Checksum is " + Integer.toHexString(checksum & 0xff));
                 }  
     		}
     	}
@@ -259,84 +256,6 @@ public class ArduinoSketchLoader implements SerialPortEventListener {
 		serialPort.getOutputStream().write(i);
 	}
 
-	class Sketch {
-		private List<Page> pages;
-		private int size;
-		private int bytesPerPage;
-		
-		public Sketch(int size, List<Page> pages, int bytesPerPage) {
-			this.size = size;
-			this.pages = pages;
-			this.bytesPerPage = bytesPerPage;
-		}
-
-		public List<Page> getPages() {
-			return pages;
-		}
-
-		public int getSize() {
-			return size;
-		}
-
-		// slightly redundant
-		public int getBytesPerPage() {
-			return bytesPerPage;
-		}
-		
-		public Page getLastPage() {
-			return this.getPages().get(this.getPages().size() - 1);
-		}
-	}
-	
-	class Page {
-		private int address;
-		private int[] data;
-		// includes address
-		private int[] page;
-		private int ordinal;
-		
-		public Page(int[] program, int offset, int dataLength, int ordinal) {
-			super();
-			this.address = offset / 2;
-			
-			int[] data = new int[dataLength];
-			System.arraycopy(program, offset, data, 0, dataLength);
-			this.data = data;			
-			this.page = new int[dataLength + 2];
-
-			// little endian according to avrdude
-			page[0] = this.address & 0xff;
-			// msb
-			page[1] = (this.address >> 8) & 0xff;
-
-			System.arraycopy(data, 0, page, 2, data.length);
-			
-			this.ordinal = ordinal;
-		}
-		
-		// bootloader address is real / 2
-		public int getBootloaderAddress16() {
-			return address;
-		}
-
-		public int getRealAddress16() {
-			return address * 2;
-		}
-		
-		public int[] getData() {
-			return data;
-		}
-
-		// includes address low/high + data
-		public int[] getPage() {
-			return page;
-		}
-
-		public int getOrdinal() {
-			return ordinal;
-		}
-	}
-	
 	public Sketch getSketch(String fileName, int pageSize) throws IOException {	
 		
 		int[] program = parseIntelHex(fileName);

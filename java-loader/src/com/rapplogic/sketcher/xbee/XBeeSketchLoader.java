@@ -1,10 +1,13 @@
-package com.rapplogic.sketchloader;
+package com.rapplogic.sketcher.xbee;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 
 import com.google.common.collect.Lists;
+import com.rapplogic.sketcher.ArduinoSketchLoader;
+import com.rapplogic.sketcher.Page;
+import com.rapplogic.sketcher.Sketch;
 import com.rapplogic.xbee.api.ApiId;
 import com.rapplogic.xbee.api.PacketListener;
 import com.rapplogic.xbee.api.XBee;
@@ -22,6 +25,7 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 		super();
 	}
 	
+	// block size for eeprom writes
 	final int PAGE_SIZE = 64;
 	final int MAGIC_BYTE1 = 0xef;
 	final int MAGIC_BYTE2 = 0xac;
@@ -33,7 +37,10 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 	
 	final int OK = 1;
 	final int FAILURE = 2;
-	// TODO TIMEOUT
+	// too much time has passed between receiving packets
+	final int TIMEOUT = 3;
+	// xbee just woke, send programming now!
+	final int WAKE = 4;
 	
 	final Object lock = new Object();
 	
@@ -160,10 +167,8 @@ public class XBeeSketchLoader extends ArduinoSketchLoader {
 					throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", response " + response);
 				}
 				
-				// wait for ACK
+				// don't send next page until this one is processed or we will overflow the buffer
 				waitForAck();
-//				// until we get ack put in delay or softserial buffer overruns
-//				Thread.sleep(500);
 			}
 
 			System.out.println("Sending flash start packet " + getFlashStartHeader(sketch.getSize()));
