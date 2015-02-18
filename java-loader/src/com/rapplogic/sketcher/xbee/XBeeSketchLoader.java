@@ -5,7 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import com.google.common.collect.Lists;
-import com.rapplogic.sketcher.SerialSketchLoader;
+import com.rapplogic.sketcher.SketchLoaderCore;
 import com.rapplogic.sketcher.Page;
 import com.rapplogic.sketcher.Sketch;
 import com.rapplogic.xbee.api.ApiId;
@@ -19,7 +19,7 @@ import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse.DeliveryStatus;
 
-public class XBeeSketchLoader extends SerialSketchLoader {
+public class XBeeSketchLoader extends SketchLoaderCore {
 
 	public XBeeSketchLoader() {
 		super();
@@ -98,7 +98,7 @@ public class XBeeSketchLoader extends SerialSketchLoader {
 	
 	public void process(String file, String device, int speed, String xbeeAddress) throws IOException {
 		// page size is max packet size for the radio
-		Sketch sketch = getSketch(file, PAGE_SIZE);
+		Sketch sketch = parseSketchFromIntelHex(file, PAGE_SIZE);
 		
 		XBee xbee = new XBee();
 		
@@ -108,7 +108,8 @@ public class XBeeSketchLoader extends SerialSketchLoader {
 			xbee.addPacketListener(new PacketListener() {
 				@Override
 				public void processResponse(XBeeResponse response) {
-					System.out.println("Received message from sketcher " + response);
+					//System.out.println("Received message from sketcher " + response);
+					
 					if (response.getApiId() == ApiId.ZNET_RX_RESPONSE) {
 						ZNetRxResponse zb = (ZNetRxResponse) response;
 						messages.clear();
@@ -141,7 +142,7 @@ public class XBeeSketchLoader extends SerialSketchLoader {
 			long start = System.currentTimeMillis();
 			
 			// send header:  size + #pages
-			System.out.println("Sending sketch to xbee radio with address " + xBeeAddress64.toString() + ", size (bytes) " + sketch.getSize() + ", packets " + sketch.getPages().size() + ", packet size " + sketch.getBytesPerPage());			
+			System.out.println("Sending sketch to xbee radio with address " + xBeeAddress64.toString() + ", size " + sketch.getSize() + " bytes, number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet");			
 			ZNetTxStatusResponse response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));			
 			
 			if (response.isError() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
@@ -156,7 +157,7 @@ public class XBeeSketchLoader extends SerialSketchLoader {
 				// send address since so we know where to write this in the eeprom
 				
 				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16()), page.getData());
-				System.out.println("Sending page with address " + page.getRealAddress16() + ", packet " + toHex(data));
+				System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", packet " + toHex(data));
 //				System.out.println("Data " + toHex(page.getData()));
 				
 				response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, data));
@@ -171,7 +172,7 @@ public class XBeeSketchLoader extends SerialSketchLoader {
 				waitForAck();
 			}
 
-			System.out.println("Sending flash start packet " + getFlashStartHeader(sketch.getSize()));
+			System.out.println("Sending flash start packet " + toHex(getFlashStartHeader(sketch.getSize())));
 			response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getFlashStartHeader(sketch.getSize())));
 
 			if (response.isError() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
@@ -180,7 +181,7 @@ public class XBeeSketchLoader extends SerialSketchLoader {
 			
 			waitForAck();
 			
-			System.out.println("\nSuccessfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
+			System.out.println("Successfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
 
 			xbee.close();
 		} catch (Exception e) {

@@ -2,9 +2,11 @@
 
 /* CONFIGURATION
 
-// This may be useful for cases where you want to program an Arduino that doesn't have a usb port, (Arduino Pro, breadboard arduino etc), and you don't have a FTDI cable/board handy.
-// In this situation, wire the Arduino to program to a usb Arduino and send to program
-// The programmer Arduino must be a Leonardo or other Arduino variant with at least 2 serial ports
+// This may be useful for cases where you want to program an Arduino (optiboot) that doesn't have a usb port (Arduino Pro, breadboard arduino etc), 
+// and you don't have a FTDI cable/board handy. In this situation, wire the Arduino (to be programmed) to a usb Arduino and send to program
+// The programmer Arduino must be a Leonardo or other Arduino variant with at least 2 serial ports, as the Java "loader" needs the usb-serial
+// port to send the program and the UART must be connected to the other Arduino. If you do not have a Leonardo it a FTDI could be used, but if you
+// have that then you could just use that to program the Arduino!
 
 // This sketch "uploads" a sketch to a Arduino (with Optiboot) via Serial @ 115.2K
 
@@ -26,25 +28,6 @@ Wiring: Programmer->Target
 
 // See boards.txt (/Applications/Arduino.app//Contents/Resources/Java/hardware/arduino/boards.txt)
 // for the avrdude configuration for the board/bootloader combo. This sketch only supports Optiboot targets
-
-/*
-REFERENCES
-
-// moteino/dualoptiboot https://github.com/LowPowerLab/DualOptiboot
-// uses eeprom (soic package) http://www.digikey.com/product-detail/en/W25X40CLSNIG/W25X40CLSNIG-ND/3008652
-impeeduino https://github.com/electricimp/reference/tree/master/hardware/impeeduino
-socat virtual comm to socket http://stackoverflow.com/questions/22624653/create-a-virtual-serial-port-connection-over-tcp
-optiloader (bootloader in sketch) https://github.com/WestfW/OptiLoader/blob/master/optiLoader.pde
-adafruit optiloader https://github.com/adafruit/Standalone-Arduino-AVR-ISP-programmer
-bootloader tips http://stackoverflow.com/questions/3652233/arduino-bootloader
-sparkfun imp https://learn.sparkfun.com/tutorials/wireless-arduino-programming-with-electric-imp
-intel hex http://en.wikipedia.org/wiki/Intel_HEX
-https://code.google.com/p/arduino/source/browse/trunk/hardware/arduino/bootloaders/atmega/ATmegaBOOT_168.c
-http://www.cs.ou.edu/~fagg/classes/general/atmel/avrdude.pdf
-https://raw.githubusercontent.com/adafruit/ArduinoISP/master/ArduinoISP.ino
-http://www.atmel.com/Images/doc2525.pdf
-*/
-
 
 // only need 128=> + 4 bytes len/addr
 #define BUFFER_SIZE 150

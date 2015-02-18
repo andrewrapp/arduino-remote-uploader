@@ -1,4 +1,4 @@
-package com.rapplogic.sketcher;
+package com.rapplogic.sketcher.serial;
 
 
 import gnu.io.CommPortIdentifier;
@@ -8,26 +8,29 @@ import gnu.io.SerialPortEvent;
 import gnu.io.SerialPortEventListener;
 import gnu.io.UnsupportedCommOperationException;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.Charset;
 import java.util.Enumeration;
-import java.util.List;
 import java.util.TooManyListenersException;
 
-import com.google.common.collect.Lists;
-import com.google.common.io.Files;
+import com.rapplogic.sketcher.Page;
+import com.rapplogic.sketcher.Sketch;
+import com.rapplogic.sketcher.SketchLoaderCore;
 
-public class SerialSketchLoader implements SerialPortEventListener {
+/**
+ * Loads a sketch from host filesystem onto an Arduino via an Arduino Leonardo, running the SerialSketcher sketch
+ * 
+ * @author andrew
+ *
+ */
+public class SerialSketchLoader extends SketchLoaderCore implements SerialPortEventListener {
 
 	final int FIRST_PAGE = 0xd;
 	final int LAST_PAGE = 0xf;
 	final int PAGE_DATA = 0xa;
 	
-	final int MAX_PROGRAM_SIZE = 0x20000;
-	final int ARDUINO_PAGE_SIZE = 128;
 	//final int BAUD_RATE = 115200;
+	// usb-serial speed. needs to match the sketch of course
 	final int BAUD_RATE = 19200;
 	
 	private InputStream inputStream;
@@ -45,105 +48,6 @@ public class SerialSketchLoader implements SerialPortEventListener {
 			}}));
 	}
 	
-	/**
-	 * Parse an intel hex file into an array of bytes
-	 * 
-	 * @param file
-	 * @return
-	 * @throws IOException
-	 */
-	public int[] parseIntelHex(String file) throws IOException {
-		File hexFile = new File(file);
-				
-		int[] program = new int[MAX_PROGRAM_SIZE];
-				
-    	// example:
-		// length = 0x10
-		// addr = 0000
-		// type = 00
-		//:100000000C94C7010C94EF010C94EF010C94EF01D8
-		//:061860000994F894FFCF8B
-		//:00000001FF
-		
-    	List<String> hex = Files.readLines(hexFile, Charset.forName("UTF-8"));
-    	
-		int lineCount = 0;
-		int position = 0;
-
-    	for (String line : hex) {
-
-    		String dataLine = line.split(":")[1];
-    		
-    		System.out.println("line: " + ++lineCount + ": " + line);
-
-    		int checksum = 0;
-    		
-    		if (line.length() > 10) {
-	    		int length = Integer.decode("0x" + dataLine.substring(0, 2));
-	    		int address = Integer.decode("0x" + dataLine.substring(2, 6));
-	    		int type = Integer.decode("0x" + dataLine.substring(6, 8));	    			
-    		
-	    		checksum += length + address + type;
-
-	    		//System.out.println("Length is " + length + ", address is " + Integer.toHexString(address) + ", type is " + Integer.toHexString(type));
-	    		
-                // Ignore all record types except 00, which is a data record. 
-                // Look out for 02 records which set the high order byte of the address space
-                if (type == 0) {
-                    // Normal data record
-                } else if (type == 4 && length == 2 && address == 0 && line.length() > 12) {
-                	// Address > 16bit not supported by Arduino so not important
-                	throw new RuntimeException("Record type 4 is not implemented");
-                } else {
-                	//System.out.println("Skipped: " + line);
-                    continue;
-                }
-                
-                // verify the addr matches our current array position
-                if (position > 0 && position != address) {
-                	throw new RuntimeException("Expected address of " + position + " but was " + address);
-                }
-                
-                // address will always be last position or we'd have gaps in the array
-                position = address;
-                
-                {
-                	int i = 8;
-	                // data starts at 8 (4th byte) to end minus checksum
-	                for (;i < 8 + (length*2); i+=2) {
-	                    int b = Integer.decode("0x" + dataLine.substring(i, i+2));	
-	                    checksum+= b;
-	                    // what we're doing here is simply parsing the data portion of each line and adding to the array
-	                    program[position] = b;
-	                    position++;
-	                }	     
-	                
-	                //System.out.println("Program data: " + toHex(program, position - length, length));
-	                
-	                // we should be at the checksum position
-	                if (i != dataLine.length() - 2) {
-	                	throw new RuntimeException("Line length does not match expected length " + length);
-	                }
-	                
-	                // checksum
-	                int expectedChecksum = Integer.decode("0x" + line.substring(line.length() - 2, line.length()));
-	                //System.out.println("Expected checksum is " + line.substring(line.length() - 2, line.length()));
-	                
-	                //checksum+= expectedChecksum;
-	                // TODO somethings not right
-	                checksum = 0xff - checksum & 0xff;
-	                
-	                //System.out.println("Checksum is " + Integer.toHexString(checksum & 0xff));
-                }  
-    		}
-    	}
-    	
-    	int[] resize = new int[position];
-    	System.arraycopy(program, 0, resize, 0, position);
-    	
-    	return resize;
-	}
-
     public CommPortIdentifier findPort(String port) {
         // parse ports and if the default port is found, initialized the reader
         Enumeration portList = CommPortIdentifier.getPortIdentifiers();
@@ -164,23 +68,6 @@ public class SerialSketchLoader implements SerialPortEventListener {
         }
         
         throw new RuntimeException("Port not found " + port);
-    }
-    
-    public String toHex(int[] data, int offset, int length) {
-    	StringBuilder hex = new StringBuilder();
-    	
-    	for (int i = offset; i < offset + length; i++) {
-    		hex.append(Integer.toHexString(data[i]));
-    		if (i != data.length - 1) {
-    			hex.append(",");
-    		}
-    	}
-    	
-    	return hex.toString();    	
-    }
-    
-    public String toHex(int[] data) {
-    	return toHex(data, 0, data.length);
     }
     
 	public void openSerial(String serialPortName, int speed) throws PortInUseException, IOException, UnsupportedCommOperationException, TooManyListenersException {
@@ -255,46 +142,11 @@ public class SerialSketchLoader implements SerialPortEventListener {
 	public void write(int i) throws IOException {
 		serialPort.getOutputStream().write(i);
 	}
-
-	public Sketch getSketch(String fileName, int pageSize) throws IOException {	
-		
-		int[] program = parseIntelHex(fileName);
-		
-		List<Page> pages = Lists.newArrayList();		
-		System.out.println("Program length is " + program.length + ", page size is " + pageSize);
-		
-		int position = 0;
-		int count = 0;
-		// write the program to the arduino in chunks of ARDUINO_BLOB_SIZE
-		while (position < program.length) {
-			
-			int length = 0;
-			
-			if (position + pageSize < program.length) {
-				length = pageSize;
-			} else {
-				length = program.length - position;
-			}
-
-//			System.out.println("Creating page for " + toHex(program, position, length));
-			pages.add(new Page(program, position, length, count));
-			
-			// index to next position
-			position+=length;
-			count++;
-		}
-		
-		return new Sketch(program.length, pages, pageSize);
-	}
-	
-//	protected Sketch getSketch(String fileName, int pageSize) throws IOException {
-//		return processPages(fileName, pageSize);		
-//	}
 	
 	public void process(String device, String hex) throws Exception {
 
 		int[] program = parseIntelHex(hex);
-		Sketch sketch = getSketch(hex, ARDUINO_PAGE_SIZE);	
+		Sketch sketch = parseSketchFromIntelHex(hex, ARDUINO_PAGE_SIZE);	
 		
 		System.out.println("Sending sketch to Arduino via serial. Program length is " + program.length + ", there are " + sketch.getPages().size() + " pages");
 		
@@ -338,7 +190,7 @@ public class SerialSketchLoader implements SerialPortEventListener {
 		// wait a few secs for leave prog mode reply
 		Thread.sleep(5000);
 		
-		// close port to 
+		// close port to trigger IOException on blocking read call and exit jvm
 		serialPort.close();
 	}
 	
