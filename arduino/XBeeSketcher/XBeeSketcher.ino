@@ -6,7 +6,40 @@
 // finally success 2/15/15 11:38AM: Flash in 2174ms!
 
 // Leonardo (usb-serial) is required for debug. Alternatively it could be adpated to use softserial
-// due to my flagrant use of Serial.println, the leonardo will go out of sram if version is true :(
+// due to my flagrant use of Serial.println, the leonardo may go out of sram if DEBUG is true :(
+
+// TROUBLESHOOTING. 
+// if flash_init fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) wired correction and is at 115200
+
+// NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
+// NOTE: Weird things can happen if you have too many debug/println statements as each string literal consumes memory. If the sketch runs out of memeory of course it doesn't function and in some cases it also inhibits Leonardo from uploading sketches
+// Keep your print statements short and concise. If you can't upload, power on leonardo and upload a blank sketch and that should fix it.
+
+// WIRING:
+// unfortunately we can't use an xbee shield because we need the serial port for programming. Instead the XBee must use softserial. You can use the shield and wire the 5V,GND,TX/RX of the shield to Arduino
+// Optiboot needs 115.2 so softserial is not an option
+// Consider modifying optiboot to run @ 19.2 so softserial is viable (on programming, still of course need serial on target)
+
+/*
+TAKE NOTE: I2C pins vary depending on the Arduino board! (see below)
+
+Microchip 24LC256
+Arduino Analog SDA - EEPROM pin 5
+Arduino Analog SCL - EEPROM pin 6
+Arduino 5V - VCC - EEPROM pin 8
+Arduino GND - VSS - EEPROM pin 4 
+
+* Connect pins 1, 2, and 3 of the eeprom GND. Pin 7 (write protect) should also be connected to GND according to datasheet but I found it works fine being open
+* pin 1 is has the dot, on the notched end, if you were wondering ;)
+
+See Arduino for how to find I2C pins for your board, it varies:
+Board I2C / TWI pins
+Uno, Ethernet A4 (SDA), A5 (SCL)
+Mega2560  20 (SDA), 21 (SCL)
+Leonardo  2 (SDA), 3 (SCL)
+Due 20 (SDA), 21 (SCL), SDA1, SCL1
+*/
+
 #define VERBOSE false
 // the Serial Monitor must be open when DEBUG true or programming will fail!
 // print debug to debug serial
@@ -18,6 +51,7 @@
 #define PROXY_SERIAL true
 
 // only need 128=> + 4 bytes len/addr
+// memeory shouldn't be an issue on the programmer since it only should ever run this sketch!
 #define BUFFER_SIZE 150
 #define READ_BUFFER_SIZE 150
 
@@ -74,18 +108,6 @@
 #define OK 1
 #define FAILURE 2
 
-// WIRING:
-// unfortunately we can't use an xbee shield because we need the serial port for programming. Instead the XBee must use softserial. You can use the shield and wire the 5V,GND,TX/RX of the shield to Arduino
-// Optiboot needs 115.2 so softserial is not an option
-// Consider modifying optiboot to run @ 19.2 so softserial is viable (on programming, still of course need serial on target)
-
-// TROUBLESHOOTING. 
-// if flash_init fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) wired correction and is at 115200
-
-// NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
-// NOTE: Weird things can happen if you have too many debug/println statements as each string literal consumes memory. If the sketch runs out of memeory of course it doesn't function and in some cases it also inhibits Leonardo from uploading sketches
-// Keep your print statements short and concise. If you can't upload, power on leonardo and upload a blank sketch and that should fix it.
-
 const int softTxPin = 11;
 const int softRxPin = 12;
 const int resetPin = 8;
@@ -122,25 +144,6 @@ bool in_prog = false;
 long prog_start = 0;
 long last_packet = 0;
 int current_eeprom_address = EEPROM_OFFSET_ADDRESS;
-
-/*
-Microchip 24LC256
-Arduino Analog SDA - EEPROM pin 5
-Arduino Analog SCL - EEPROM pin 6
-Arduino 5V - VCC - EEPROM pin 8
-Arduino GND - VSS - EEPROM pin 4 
-
-* Connect pins 1, 2, and 3 of the eeprom GND. Pin 7 (write protect) should also be connected to GND according to datasheet but I found it works fine being open
-* pin 1 is has the dot, on the notched end, if you were wondering ;)
-
-See Arduino for how to find I2C pins for your board, it varies:
-Board I2C / TWI pins
-Uno, Ethernet A4 (SDA), A5 (SCL)
-Mega2560  20 (SDA), 21 (SCL)
-Leonardo  2 (SDA), 3 (SCL)
-Due 20 (SDA), 21 (SCL), SDA1, SCL1
-*/
-
 
 //Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
@@ -339,8 +342,16 @@ int flash_init() {
     
     if (data_len != 3) {      
       return -1;      
-    } else if (read_buffer[0] != 0x1E && read_buffer[1] != 0x94 && read_buffer[2] != 0x6) {
-      if (DEBUG) getDebugSerial()->println("Signature invalid");
+    } else if (read_buffer[0] == 0x1E && read_buffer[1] == 0x94 && read_buffer[2] == 0x6) {
+      //atmega168
+    } else if (read_buffer[0] == 0x1E && read_buffer[1] == 0x95 && read_buffer[2] == 0x0f) {
+      //atmega328p
+    } else if (read_buffer[0] == 0x1E && read_buffer[1] == 0x95 && read_buffer[2] == 0x14) {      
+      //atmega328
+    } else {
+      if (DEBUG) {
+        dump_buffer(read_buffer, "Unexpected signature: ", 3);
+      }
       return -1;
     }
     
