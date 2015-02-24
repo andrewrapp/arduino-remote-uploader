@@ -102,8 +102,10 @@ void setup(void) {
 
   radio.begin();
 
-  // experiment
-  //radio.setPALevel(RF24_PA_MIN);
+  // doesn't say what the default is
+  radio.setPALevel(RF24_PA_MAX);
+  
+  // try a differnt speed RF24_1MBPS
   radio.setDataRate(RF24_250KBPS);
   
   //pick an arbitrary channel. default is 4c
