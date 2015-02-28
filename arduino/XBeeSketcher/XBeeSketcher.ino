@@ -5,14 +5,14 @@
 
 // finally success 2/15/15 11:38AM: Flash in 2174ms!
 
-// Leonardo (usb-serial) is required for USBDEBUG. Alternatively it could be adpated to use softserial
-// due to my flagrant use of Serial.println, the leonardo may go out of sram if USBDEBUG is true :(
+// Leonardo (usb-serial) is required for (USBDEBUG || NSSDEBUG). Alternatively it could be adpated to use softserial
+// due to my flagrant use of Serial.println, the leonardo may go out of sram if (USBDEBUG || NSSDEBUG) is true :(
 
 // TROUBLESHOOTING. 
 // if flash_init fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) wired correction and is at 115200
 
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
-// NOTE: Weird things can happen if you have too many USBDEBUG/println statements as each string literal consumes memory. If the sketch runs out of memeory of course it doesn't function and in some cases it also inhibits Leonardo from uploading sketches
+// NOTE: Weird things can happen if you have too many (USBDEBUG || NSSDEBUG)/println statements as each string literal consumes memory. If the sketch runs out of memeory of course it doesn't function and in some cases it also inhibits Leonardo from uploading sketches
 // Keep your print statements short and concise. If you can't upload, power on leonardo and upload a blank sketch and that should fix it.
 
 // WIRING:
@@ -41,24 +41,61 @@ Due 20 (SDA), 21 (SCL), SDA1, SCL1
 
 Programmer digital 8 -> reset
 Programmer digital 11 -> XBee RX
-Programmer digital 12 -> XBee TX
+Programmer digital 10 -> XBee TX
+Programmer TX -> app RX
+Programmer RX -> app TX
 
 Arduino Pro
 VCC -> 5V regulated
 GND -> GND
 
-NOTE: when uploading a new version of the sketcher to a Pro, remember to disconnect the serial lines from other arduino or upload will fail. Leonardo is more flexible since upload occurs over usb-serial
+NOTE: when uploading a new version of the sketcher to a Pro, remember to disconnect the serial lines from other arduino or upload will fail. 
+Also you'll need to press the reset button if you don't have CTS connected (for auto-reset).
+Leonardo is more flexible since upload occurs over usb-serial
+
+TROUBLESHOOTING
+- check every pin connection, reset, xbee tx/rx (remember arduino tx goes to xbee rx), eeprom, power. make sure all powered devices share a com
+- in a pinch you can disconnect the serial port from the other arduino and set USBDEBUG to true for debug to verify functionality up to flashing (xbee comm and eeprom)
 */
 
+// WARNING: fails on 328. only seems to work on Leonard TODO VERIFY!
+// TODO shorten strings so it doesn't go out of memory
 #define VERBOSE false
-// Serial Monitor must be open when USBDEBUG true
-#define USBDEBUG false
+// Serial Monitor must be open when (USBDEBUG || NSSDEBUG) true
+#define USBDEBUG true
 
-// should we proxy serial rx/tx to softserial (xbee) 
-#define PROXY_SERIAL true
+// WARNING UNTESTED!
+#define NSSDEBUG false
+#define NSSDEBUG_TX 6
+#define NSSDEBUG_RX 7
+
+// NOTE: ONLY SET THIS TRUE FOR TROUBLESHOOTING. FLASHING IS NOT POSSIBLE IF SET TO TRUE
+#define USE_SERIAL_FOR_DEBUG false
+
+// should we proxy serial rx/tx to softserial (xbee). if only using xbee for programming set to false
+#define PROXY_SERIAL false
+
+// pins at end of pro board
+const int softTxPin = 11;
+const int softRxPin = 10;
+const int resetPin = 8;
+
+
+// TODO config/setup section
+const uint32_t COORD_MSB_ADDRESS = 0x0013a200;
+const uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
+
+// ** IMPORTANT! **
+// For Leonardo this must be Serial1 (UART) or it will try to program through usb-serial
+// For atmega328 use Serial
+// for megas other serials should work -- UNTESTED
+HardwareSerial* progammerSerial = &Serial;
+
+// END CONFIG
+
 
 // only need 128=> + 4 bytes len/addr
-// memeory shouldn't be an issue on the programmer since it only should ever run this sketch!
+// memory shouldn't be an issue on the programmer since it only should ever run this sketch!
 #define BUFFER_SIZE 150
 #define READ_BUFFER_SIZE 150
 
@@ -101,6 +138,7 @@ NOTE: when uploading a new version of the sketcher to a Pro, remember to disconn
 #define STK_READ_FUSE_EXT   0x77  // 'w'
 #define STK_READ_OSCCAL_EXT 0x78  // 'x'
 
+//??
 #define MAGIC_BYTE1 0xef
 #define MAGIC_BYTE2 0xac
 
@@ -112,12 +150,11 @@ NOTE: when uploading a new version of the sketcher to a Pro, remember to disconn
 #define CONTROL_PROG_DATA 0x20
 #define CONTROL_FLASH_START 0x40
 
+// XBee message codes
 #define OK 1
-#define FAILURE 2
-
-const int softTxPin = 11;
-const int softRxPin = 12;
-const int resetPin = 8;
+#define EEPROM_ERROR 0x80
+#define EEPROM_WRITE_ERROR 0x81
+#define FLASH_ERROR 0x82
 
 const int PROG_PAGE_RETRIES = 2;
 const int EEPROM_OFFSET_ADDRESS = 16;
@@ -131,8 +168,6 @@ XBeeResponse response = XBeeResponse();
 ZBRxResponse rx = ZBRxResponse();
 
 uint8_t xbeeTxPayload[] = { 0 };
-uint32_t COORD_MSB_ADDRESS = 0x0013a200;
-uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
 
 // Coordinator/XMPP Gateway
 XBeeAddress64 addr64 = XBeeAddress64(COORD_MSB_ADDRESS, COORD_LSB_ADDRESS);
@@ -156,28 +191,32 @@ int current_eeprom_address = EEPROM_OFFSET_ADDRESS;
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
 SoftwareSerial nss(softTxPin, softRxPin);
 
+#if (NSSDEBUG) 
+  SoftwareSerial nss_debug(NSSDEBUG_TX, NSSDEBUG_RX);
+#endif
+
 extEEPROM eeprom(kbits_256, 1, 64);
 
-// For Leonardo this must be Serial1 (UART)
-// For atmega328 use Serial
-HardwareSerial progammerSerial = Serial;
-
 HardwareSerial* getProgrammerSerial() {
-  return &progammerSerial;
+  return progammerSerial;
 }
 
 //Stream* getProgrammerSerial() {
-//  return &progammerSerial;
+//  return progammerSerial;
 //}
 
 Stream* getXBeeSerial() {
   return &nss;  
 }
 
-// can only use USBDEBUG with Leonardo or other variant that supports multiple serial ports
+// can only use (USBDEBUG || NSSDEBUG) with Leonardo or other variant that supports multiple serial ports
 #if (USBDEBUG)
   Stream* getDebugSerial() {
     return &Serial;  
+  }
+#elif (NSSDEBUG) 
+  Stream* getDebugSerial() {
+    return &nss_debug;  
   }
 #endif
 
@@ -189,9 +228,9 @@ void clear_read() {
   }
   
   if (count > 0) {
-    if (USBDEBUG && VERBOSE) {
+    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
       getDebugSerial()->print("clear_read: trashed "); getDebugSerial()->print(count, DEC); getDebugSerial()->println(" bytes");
-    }
+    #endif
   }
 }
 
@@ -220,15 +259,15 @@ int read_response(uint8_t len, int timeout) {
   }
   
   // TODO return error code instead of strings that take up precious memeory
-  if (USBDEBUG) {
+  #if (USBDEBUG || NSSDEBUG)
     getDebugSerial()->print("read timeout! got "); getDebugSerial()->print(pos, DEC); getDebugSerial()->print(" byte, expected "); getDebugSerial()->print(len, DEC); getDebugSerial()->println(" bytes");
-  }
+  #endif
   
   return -1;
 }
 
 void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
-  if (USBDEBUG) {
+  #if (USBDEBUG || NSSDEBUG)
     getDebugSerial()->print(context);
     getDebugSerial()->print(": ");
   
@@ -242,15 +281,15 @@ void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
   
     getDebugSerial()->println("");
     getDebugSerial()->flush();
-  }
+  #endif
 }
 
 // Send command and buffer and return length of reply
 int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
 
-    if (VERBOSE && USBDEBUG) {
+    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
       getDebugSerial()->print("send() unexpected command: "); getDebugSerial()->println(command, HEX);
-    }
+    #endif
     
     getProgrammerSerial()->write(command);
 
@@ -259,7 +298,9 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
       getProgrammerSerial()->write(arr[i]);   
     }
     
-    if (VERBOSE && USBDEBUG) dump_buffer(arr, "send()->", len);
+    #if (VERBOSE && (USBDEBUG || NSSDEBUG)) 
+      dump_buffer(arr, "send()->", len);
+    #endif
   }
   
   getProgrammerSerial()->write(CRC_EOP);
@@ -278,22 +319,24 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
   }
 
   if (reply_len < 2) {
-    if (USBDEBUG) getDebugSerial()->println("Invalid response");
+    #if (USBDEBUG || NSSDEBUG) 
+      getDebugSerial()->println("Invalid response");
+    #endif
     return -1; 
   }
 
   if (read_buffer[0] != STK_INSYNC) {
-    if (USBDEBUG) {
+    #if (USBDEBUG || NSSDEBUG)
       getDebugSerial()->print("Expected STK_INSYNC but was "); getDebugSerial()->println(read_buffer[0], HEX);
-    }
+    #endif
     
     return -1;
   }
   
   if (read_buffer[reply_len - 1] != STK_OK) {
-    if (USBDEBUG) {
+    #if (USBDEBUG || NSSDEBUG)
       getDebugSerial()->print("Expected STK_OK but was "); getDebugSerial()->println(read_buffer[reply_len - 1], HEX);
-    }
+    #endif
     return -1;    
   }
   
@@ -326,9 +369,9 @@ int flash_init() {
      return -1;   
     }
     
-    if (VERBOSE && USBDEBUG) {
+    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
       getDebugSerial()->print("Firmware: "); getDebugSerial()->println(read_buffer[0], HEX);      
-    }
+    #endif
 
     
     cmd_buffer[0] = 0x82;
@@ -338,9 +381,9 @@ int flash_init() {
      return -1;   
     }
 
-    if (VERBOSE && USBDEBUG) {
+    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
       getDebugSerial()->print("Minor: "); getDebugSerial()->println(read_buffer[0], HEX);    
-    }
+    #endif
     
     // this not a valid command. optiboot will send back 0x3 for anything it doesn't understand
     cmd_buffer[0] = 0x83;
@@ -349,9 +392,9 @@ int flash_init() {
     if (data_len == -1) {
       return -1;   
     } else if (read_buffer[0] != 0x3) {
-      if (USBDEBUG) {
+      #if (USBDEBUG || NSSDEBUG)
         getDebugSerial()->print("Unxpected optiboot reply: "); getDebugSerial()->println(read_buffer[0]);
-      }
+      #endif
       return -1;
     }
 
@@ -366,13 +409,15 @@ int flash_init() {
     } else if (read_buffer[0] == 0x1E && read_buffer[1] == 0x95 && read_buffer[2] == 0x14) {      
       //atmega328
     } else {
-      if (USBDEBUG) {
+      #if (USBDEBUG || NSSDEBUG)
         dump_buffer(read_buffer, "Unexpected signature: ", 3);
-      }
+      #endif
       return -1;
     }
     
-    if (USBDEBUG) getDebugSerial()->println("Talking to Optiboot");      
+    #if (USBDEBUG || NSSDEBUG)
+      getDebugSerial()->println("Talking to Optiboot");      
+    #endif
   
     // IGNORED BY OPTIBOOT
     // avrdude does a set device
@@ -388,11 +433,13 @@ int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {
     // address is byte index 2,3
     
     // retry up to 2 times
-    // disable retries for USBDEBUGging
+    // disable retries for DEBUGging
     //for (int z = 0; z < PROG_PAGE_RETRIES + 1; z++) {
       // [55] . [00] . [00] 
       if (send(STK_LOAD_ADDRESS, addr, 2, 0) == -1) {
-        if (USBDEBUG) getDebugSerial()->println("Load address failed");          
+        #if (USBDEBUG || NSSDEBUG) 
+          getDebugSerial()->println("Load address failed");          
+        #endif
 
         return -1;
       }
@@ -409,36 +456,42 @@ int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {
       
       // add 3 to data_len
       if (send(STK_PROG_PAGE, buffer, data_len + 3, 0) == -1) {
-        if (USBDEBUG) getDebugSerial()->println("Prog page failed");
+        #if (USBDEBUG || NSSDEBUG) 
+          getDebugSerial()->println("Prog page failed");
+        #endif        
         return -1;
       }
   
       uint8_t reply_len = send(STK_READ_PAGE, buffer, 3, data_len);
       
       if (reply_len == -1) {
-        if (USBDEBUG) getDebugSerial()->println("Read page failure");
+        #if (USBDEBUG || NSSDEBUG) 
+          getDebugSerial()->println("Read page failure");
+        #endif          
         return -1;
       }
       
       if (reply_len != data_len) {
-        if (USBDEBUG) getDebugSerial()->println("Read page len fail");
+        #if (USBDEBUG || NSSDEBUG) 
+          getDebugSerial()->println("Read page len fail");
+        #endif
         return -1;
       }
       
       // TODO we can compute checksum on buffer, reset and use for the read buffer!!!!!!!!!!!!!!!
       
-      if (VERBOSE && USBDEBUG) {
+      #if (VERBOSE && (USBDEBUG || NSSDEBUG))
         getDebugSerial()->print("Read page length is "); getDebugSerial()->println(reply_len, DEC);      
-      }
+      #endif
       
       bool verified = true;
       
       // verify each byte written matches what is returned by bootloader
       for (int i = 0; i < reply_len; i++) {        
         if (read_buffer[i] != buffer[i + 3]) {
-          if (USBDEBUG) {
+          #if (USBDEBUG || NSSDEBUG)
             getDebugSerial()->print("Verify page fail @ "); getDebugSerial()->println(i, DEC);
-          }
+          #endif
           verified = false;
           break;
         }
@@ -449,7 +502,9 @@ int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {
         //if (z < PROG_PAGE_RETRIES) {
         //  getDebugSerial()->println("Failed to verify page.. retrying");
         //} else {
-          if (USBDEBUG) getDebugSerial()->println("Verify page fail");
+          #if (USBDEBUG || NSSDEBUG) 
+            getDebugSerial()->println("Verify page fail");
+          #endif            
         //}
         
         // disable retries
@@ -492,7 +547,9 @@ void forwardPacket() {
   // not programming packet, so proxy all xbee traffic to Arduino
   // prob cleaner way to do this if I think about it some more
   
-  if (USBDEBUG) getDebugSerial()->println("Forwarding packet");    
+  #if (USBDEBUG || NSSDEBUG) 
+    getDebugSerial()->println("Forwarding packet");    
+  #endif
         
   // send start byte, length, api, then frame data + checksum
   sendByte(START_BYTE, false);
@@ -514,20 +571,29 @@ int flash(int start_address, int size) {
   // now read from eeprom and program  
   long start = millis();
   
+  #if (USBDEBUG || NSSDEBUG) 
+    getDebugSerial()->println("Flashing from eeprom...");
+  #endif
+
   bounce();
-  
+
+  // set to optiboot speed
+  getProgrammerSerial()->begin(115200);
+          
   if (flash_init() != 0) {
-    if (USBDEBUG) getDebugSerial()->println("Check failed!");
+    #if (USBDEBUG || NSSDEBUG) 
+      getDebugSerial()->println("Check failed!");
+    #endif
     prog_reset();
     return -1;
   } 
   
   if (send(STK_ENTER_PROGMODE, buffer, 0, 0) == -1) {
-    if (USBDEBUG) getDebugSerial()->println("STK_ENTER_PROGMODE failure");
+    #if (USBDEBUG || NSSDEBUG) 
+      getDebugSerial()->println("STK_ENTER_PROGMODE failure");
+    #endif  
     return -1;
-  }    
-  
-  if (USBDEBUG) getDebugSerial()->println("Flashing from eeprom...");
+  }
     
   int current_address = start_address;
   
@@ -540,15 +606,17 @@ int flash(int start_address, int size) {
       len = 128;
     }
     
-    if (VERBOSE && USBDEBUG) {
+    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
       getDebugSerial()->print("EEPROM read at address "); getDebugSerial()->print(current_address, DEC); getDebugSerial()->print(" len is "); getDebugSerial()->println(len, DEC);
-    }
+    #endif
      
     // skip 2 so we leave room for the prog_page command
     int ok = eeprom.read(current_address, buffer + 3, len);
     
     if (ok != 0) {
-      if (USBDEBUG) getDebugSerial()->println("EEPROM read fail");
+      #if (USBDEBUG || NSSDEBUG) 
+        getDebugSerial()->println("EEPROM read fail");
+      #endif        
       return -1;
     }
     
@@ -557,13 +625,15 @@ int flash(int start_address, int size) {
     addr[0] = ((current_address - start_address) / 2) & 0xff;
     addr[1] = (((current_address - start_address) / 2) >> 8) & 0xff;
     
-    if (VERBOSE && USBDEBUG) {
+    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
       getDebugSerial()->print("Sending page len: "); getDebugSerial()->println(len, DEC);            
       dump_buffer(buffer + 3, "read from eeprom->", len);
-    }
+    #endif
                   
     if (send_page(addr, buffer, len) == -1) {
-      if (USBDEBUG) getDebugSerial()->println("Send page fail");
+      #if (USBDEBUG || NSSDEBUG) 
+        getDebugSerial()->println("Send page fail");
+      #endif  
       return -1;
     }
     
@@ -571,14 +641,16 @@ int flash(int start_address, int size) {
   }
   
   if (send(STK_LEAVE_PROGMODE, buffer, 0, 0) == -1) {
-    if (USBDEBUG) getDebugSerial()->println("STK_LEAVE_PROGMODE failure");
+    #if (USBDEBUG || NSSDEBUG) 
+      getDebugSerial()->println("STK_LEAVE_PROGMODE failure");
+    #endif  
     return -1;       
   }
   
   // SUCCESS!!
-  if (USBDEBUG) {
+  #if (USBDEBUG || NSSDEBUG)
     getDebugSerial()->print("Flashed in "); getDebugSerial()->print(millis() - start, DEC); getDebugSerial()->println("ms");
-  }
+  #endif
       
   return 0;
 }
@@ -587,7 +659,9 @@ void bounce() {
     //clear_read();
 
     // Bounce the reset pin
-    if (USBDEBUG) getDebugSerial()->println("Bouncing the Arduino");
+    #if (USBDEBUG || NSSDEBUG) 
+      getDebugSerial()->println("Bouncing the Arduino");
+    #endif      
  
     // set reset pin low
     digitalWrite(resetPin, LOW);
@@ -596,7 +670,7 @@ void bounce() {
     delay(300);
 }
 
-int sendMessageToProgrammer(uint8_t status) {
+int sendToXBee(uint8_t status) {
   xbeeTxPayload[0] = status;
   // TODO send with magic packet host can differentiate between relayed packets and programming ACKS
   xbee.send(tx);
@@ -612,16 +686,20 @@ int sendMessageToProgrammer(uint8_t status) {
         // good
         return 0;
       } else {
-        if (USBDEBUG) getDebugSerial()->println("TX fail");
+        #if (USBDEBUG || NSSDEBUG) 
+          getDebugSerial()->println("TX fail");
+        #endif  
       }
     }      
   } else if (xbee.getResponse().isError()) {
-    if (USBDEBUG) {    
+    #if (USBDEBUG || NSSDEBUG)
       getDebugSerial()->print("TX error:");  
       getDebugSerial()->print(xbee.getResponse().getErrorCode());
-    }
+    #endif
   } else {
-    if (USBDEBUG) getDebugSerial()->println("TX timeout");
+    #if (USBDEBUG || NSSDEBUG) 
+      getDebugSerial()->println("TX timeout");
+    #endif  
   } 
   
   return -1;
@@ -641,16 +719,20 @@ void handlePacket() {
       // 3 bytes for head + at least one programming
       if (rx.getDataLength() >= 4 && rx.getData(0) == MAGIC_BYTE1 && rx.getData(1) == MAGIC_BYTE2) {          
         // echo * for each programming packet
-        if (USBDEBUG) {        
+        #if (USBDEBUG || NSSDEBUG) 
           getDebugSerial()->print("*");
-        }
+        #endif
       
         if (rx.getData(2) == CONTROL_PROG_REQUEST) {
          // start
-          if (USBDEBUG) getDebugSerial()->println("Received start xbee packet");
+          #if (USBDEBUG || NSSDEBUG) 
+            getDebugSerial()->println("Received start xbee packet");
+          #endif  
           
           if (in_prog) {
-            if (USBDEBUG) getDebugSerial()->println("Error: in prog");
+            #if (USBDEBUG || NSSDEBUG) 
+              getDebugSerial()->println("Error: in prog");
+            #endif              
             // TODO send error to client
             return;
           }
@@ -670,7 +752,7 @@ void handlePacket() {
           // num packets to be sent   
           num_packets = rx.getData(5) << 8 + rx.getData(6);   
            
-          sendMessageToProgrammer(OK);               
+          sendToXBee(OK);               
         } else if (rx.getData(2) == CONTROL_PROG_DATA && in_prog) {
           packet_count++;
           
@@ -692,15 +774,15 @@ void handlePacket() {
 
           // check if the address of this packet aligns with the last write to eeprom. it could be a resend and that's ok
           if (current_eeprom_address < (address + EEPROM_OFFSET_ADDRESS)) {
-            if (USBDEBUG) {
+            #if (USBDEBUG || NSSDEBUG)
               getDebugSerial()->print("WARN: expected address "); getDebugSerial()->print(current_eeprom_address, DEC); getDebugSerial()->print(" but got "); getDebugSerial()->println(address + EEPROM_OFFSET_ADDRESS, DEC);
-            }
+            #endif
           } else if (current_eeprom_address > (address + EEPROM_OFFSET_ADDRESS)) {
             // attempt to write beyond current eeprom address
             // this would result in a gap in data and would ultimately fail, so reject
-            if (USBDEBUG) {
+            #if (USBDEBUG || NSSDEBUG)
               getDebugSerial()->print("ERROR: attempt to write @ address "); getDebugSerial()->print((address + EEPROM_OFFSET_ADDRESS) & 0xff, DEC); getDebugSerial()->print(" but current address @ "); getDebugSerial()->println(current_eeprom_address & 0xff, DEC);            
-            }
+            #endif
             // TODO send error reply back
             return;
           }
@@ -714,7 +796,10 @@ void handlePacket() {
             uint8_t len = xbee.getResponse().getFrameDataLength() - 16;
             
             if (eeprom.write(current_eeprom_address, xbee.getResponse().getFrameData() + 16, len) != 0) {
-              if (USBDEBUG) getDebugSerial()->println("EEPROM write failure");
+              #if (USBDEBUG || NSSDEBUG) 
+                getDebugSerial()->println("EEPROM write failure");
+              #endif  
+              sendToXBee(EEPROM_WRITE_ERROR);
               return;              
             }
 
@@ -726,42 +811,48 @@ void handlePacket() {
           // TODO write a checksum in eeprom header so we can verify prior to flashing                          
           // prog data
 
-          sendMessageToProgrammer(OK);          
+          sendToXBee(OK);          
         } else if (rx.getData(2) == CONTROL_FLASH_START && in_prog) {
           // done verify we got expected # packets
 
-          if (USBDEBUG) getDebugSerial()->println("");
+          #if (USBDEBUG || NSSDEBUG) 
+            getDebugSerial()->println("");
+          #endif  
           
           // TODO verify that's what we've received            
           // NOTE redundant we have prog_size
           int psize = (rx.getData(3) << 8) + rx.getData(4);
                     
           if (psize != current_eeprom_address - EEPROM_OFFSET_ADDRESS) {
+            // TODO error code
               return;              
           } else if (psize != prog_size) {
-            if (USBDEBUG) getDebugSerial()->println("psize != prog_size");
+            #if (USBDEBUG || NSSDEBUG) 
+              getDebugSerial()->println("psize != prog_size");
+            #endif              
             return;            
           }         
-
-          // make it fast for optiboot
-          progammerSerial.begin(115200);
           
           if (flash(EEPROM_OFFSET_ADDRESS, prog_size) != 0) {
-            if (USBDEBUG) getDebugSerial()->println("Flash failure");
-            sendMessageToProgrammer(FAILURE);            
+            #if (USBDEBUG || NSSDEBUG)
+              getDebugSerial()->println("Flash failure");
+            #endif              
+            sendToXBee(FLASH_ERROR);            
           } else {
-            sendMessageToProgrammer(OK);            
+            sendToXBee(OK);            
           }
           
           // resume xbee speed
-          progammerSerial.begin(9600);
+          getProgrammerSerial()->begin(9600);
 
           // reset everything
           prog_reset();
         } else {
           // sync error, not expecting prog data   
           // TODO send error. client needs to start over
-          if (USBDEBUG) getDebugSerial()->println("not-in-prog");
+          #if (USBDEBUG || NSSDEBUG) 
+            getDebugSerial()->println("not-in-prog");
+          #endif  
         }
         
         last_packet = millis();
@@ -777,29 +868,42 @@ void handlePacket() {
 void setup() {  
   // leonardo wait for serial
   #if (USBDEBUG)
-    // start usb serial on leonardo for USBDEBUGging
+    // start usb serial on leonardo for DEBUGging
     // usb-serial @19200 could go higher  
     Serial.begin(19200);    
+    // only necessary for leonardo
     while (!Serial);
+  #elif (NSSDEBUG) 
+    nss_debug.begin(19200);
   #endif
+  
+  //delay(5000);
+  //Serial.println("Hi");
   
   pinMode(resetPin, OUTPUT);
   
   // optiboot is 115.2K
   // Start with 9600 for xbee
   // then switch to 115.2 for flashing for Optiboot
-  getProgrammerSerial()->begin(9600);
-  
-  if (eeprom.begin(twiClock400kHz) != 0) {
-    if (USBDEBUG) getDebugSerial()->println("eeprom failure");
-    return;  
-  }
-  
+  #if (!USE_SERIAL_FOR_DEBUG)
+    getProgrammerSerial()->begin(9600);
+  #endif
+
   // we only have one Serial port (UART) so need nss for XBee
   nss.begin(9600);  
   xbee.setSerial(nss);
-
-  if (USBDEBUG) getDebugSerial()->println("Ready!");
+  
+  if (eeprom.begin(twiClock400kHz) != 0) {
+    #if (USBDEBUG || NSSDEBUG) 
+      getDebugSerial()->println("eeprom failure");
+    #endif  
+    sendToXBee(EEPROM_ERROR);
+    return;  
+  }
+  
+  #if (USBDEBUG || NSSDEBUG) 
+    getDebugSerial()->println("Ready!");
+  #endif  
 }
 
 void loop() {  
@@ -812,13 +916,17 @@ void loop() {
     // NOTE the target sketch should ignore any programming packets it receives as that is an indication of a failed programming attempt
     handlePacket();
   } else if (xbee.getResponse().isError()) {
-    if (USBDEBUG) getDebugSerial()->println("RX error: ");
-    if (USBDEBUG) getDebugSerial()->println(xbee.getResponse().getErrorCode(), DEC);
+    #if (USBDEBUG || NSSDEBUG) 
+      getDebugSerial()->println("RX error: ");
+      getDebugSerial()->println(xbee.getResponse().getErrorCode(), DEC);
+    #endif  
   }  
   
   if (in_prog && last_packet > 0 && (millis() - last_packet) > XBEE_TIMEOUT) {
     // timeout
-    if (USBDEBUG) getDebugSerial()->println("Prog timeout");
+    #if (USBDEBUG || NSSDEBUG)
+      getDebugSerial()->println("Prog timeout");
+    #endif  
     prog_reset();
   }
   

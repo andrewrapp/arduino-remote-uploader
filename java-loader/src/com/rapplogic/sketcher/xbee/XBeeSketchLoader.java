@@ -39,8 +39,12 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 	final int FAILURE = 2;
 	// too much time has passed between receiving packets
 	final int TIMEOUT = 3;
+	
+	
+	final int EEPROM_ERROR = 3;
+	
 	// xbee just woke, send programming now!
-	final int WAKE = 4;
+	//final int WAKE = 4;
 	
 	final Object lock = new Object();
 	
@@ -165,6 +169,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				if (response.isSuccess() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
 //					System.out.print("#");					
 				} else {
+					// that radio is powered on
 					throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", response " + response);
 				}
 				
