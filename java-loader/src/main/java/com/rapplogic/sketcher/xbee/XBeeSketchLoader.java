@@ -208,6 +208,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		//new XBeeSketchLoader().process(args[0], args[1], Integer.parseInt(args[2]), args[3]);
 		//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/HelloTest.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
 		//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/TestXBeeOnTarget.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
-		new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
+		//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
+		new XBeeSketchLoader().process("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build1410674702632504781.tmp/Blink.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
 	}
 }
