@@ -65,6 +65,18 @@
 			<groupId>log4j</groupId>
 			<artifactId>log4j</artifactId>
 			<version>1.2.16</version>
-		</dependency>		
+		</dependency>	
+<!-- 
+<dependency>
+  <groupId>net.sf.jopt-simple</groupId>
+  <artifactId>jopt-simple</artifactId>
+  <version>4.9-beta-1</version>
+</dependency>
+ -->			
+		<dependency>
+			<groupId>commons-cli</groupId>
+			<artifactId>commons-cli</artifactId>
+			<version>1.2</version>
+		</dependency>	
 	</dependencies>
 </project>

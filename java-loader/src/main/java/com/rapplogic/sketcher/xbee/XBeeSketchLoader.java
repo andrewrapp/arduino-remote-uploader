@@ -1,13 +1,19 @@
 package com.rapplogic.sketcher.xbee;
 
 import java.io.IOException;
+import java.text.ParseException;
 import java.util.Arrays;
 import java.util.List;
 
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.PosixParser;
+
 import com.google.common.collect.Lists;
-import com.rapplogic.sketcher.SketchLoaderCore;
 import com.rapplogic.sketcher.Page;
 import com.rapplogic.sketcher.Sketch;
+import com.rapplogic.sketcher.SketchLoaderCore;
 import com.rapplogic.xbee.api.ApiId;
 import com.rapplogic.xbee.api.PacketListener;
 import com.rapplogic.xbee.api.XBee;
@@ -19,6 +25,16 @@ import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse.DeliveryStatus;
 
+/**
+ * Only tested on Mac. I've included RXTX libraries for windows, and linux, so should work for 32-bit jvms
+ * On mac you must use the java 1.6 that comes with Mac as Oracle Java for Mac does not support 32-bit mode, which RXTX requires (RXTX seems to be abandoned and they don't release 64-bit binaries)
+ * Similarly on other platforms that don't support 32-bit mode, you'll need to find a java version that does
+ *  
+ * ex ./sketch-loader.sh --sketch_hex /var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build1410674702632504781.tmp/Blink.cpp.hex --serial_port /dev/tty.usbserial-A6005uRz --baud_rate 9600 --remote_xbee_address 0013A200408B98FF
+ * 
+ * @author andrew
+ *
+ */
 public class XBeeSketchLoader extends SketchLoaderCore {
 
 	public XBeeSketchLoader() {
@@ -100,7 +116,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 
 	final List<Integer> messages = Lists.newArrayList();
 	
-	public void process(String file, String device, int speed, String xbeeAddress) throws IOException {
+	public void process(String file, String device, int speed, String xbeeAddress, boolean verbose) throws IOException {
 		// page size is max packet size for the radio
 		Sketch sketch = parseSketchFromIntelHex(file, PAGE_SIZE);
 		
@@ -138,9 +154,6 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 			
 			XBeeAddress64 xBeeAddress64 = new XBeeAddress64(xbeeAddress);
 			
-			// TODO send request to start programming and wait for reply
-			// TODO more robust approach is to send async then wait for rx acknowledgement
-			// TODO put a magic word in each packet to differentiate from other radios that might be trying to communicate during proramming. for now we'll say unsupported?
 			// TODO consider sending version number, a weak hash of hex file so we can query what version is on the device. could simply add up the bytes and send as 24-bit value
 			
 			long start = System.currentTimeMillis();
@@ -161,9 +174,14 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				// send address since so we know where to write this in the eeprom
 				
 				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16()), page.getData());
-				System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", packet " + toHex(data));
-//				System.out.println("Data " + toHex(page.getData()));
 				
+				if (verbose) {
+					System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", packet " + toHex(data));
+//					System.out.println("Data " + toHex(page.getData()));
+				} else {
+					System.out.print(".");
+				}
+
 				response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, data));
 				
 				if (response.isSuccess() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
@@ -177,6 +195,10 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				waitForAck();
 			}
 
+			if (!verbose) {
+				System.out.println("");
+			}
+			
 			System.out.println("Sending flash start packet " + toHex(getFlashStartHeader(sketch.getSize())));
 			response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getFlashStartHeader(sketch.getSize())));
 
@@ -203,12 +225,32 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		return result;
 	}
 
-	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException {
-		// sketch hex file, device, speed, xbee address, radio_type  
-		//new XBeeSketchLoader().process(args[0], args[1], Integer.parseInt(args[2]), args[3]);
-		//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/HelloTest.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
-		//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/TestXBeeOnTarget.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
-		//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
-		new XBeeSketchLoader().process("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build1410674702632504781.tmp/Blink.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF");
+	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
+		Options options = new Options();
+
+		// cli doesn't allow single dashes in args which is insane!
+		final String sketch = "sketch_hex";
+		final String serialPort = "serial_port";
+		final String baudRate = "baud_rate";
+		final String xbeeAddress = "remote_xbee_address";
+		final String verboseArg = "verbose";
+		
+		// add t option
+		options.addOption(sketch, true, "Path to compiled sketch (compiled by Arduino IDE)");
+		options.addOption(serialPort, true, "Serial port of XBee radio (e.g. /dev/tty.usbserial-A6005uRz)");
+		options.addOption(baudRate, true, "Baud rate of host XBee baud rate configuration");
+		options.addOption(xbeeAddress, true, "Address (64-bit) of remote XBee radio (e.g. 0013A21240AB9856)");
+		options.addOption(verboseArg, false, "Make chatty");
+		
+		CommandLineParser parser = new PosixParser();
+		CommandLine cmd = parser.parse(options, args);
+
+		boolean verbose = false;
+		
+		if (cmd.hasOption(verboseArg)) {
+			verbose = true;
+		}
+
+		new XBeeSketchLoader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), Integer.parseInt(cmd.getOptionValue(baudRate)), cmd.getOptionValue(xbeeAddress), verbose);
 	}
 }
