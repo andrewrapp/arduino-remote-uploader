@@ -3,16 +3,19 @@
 #include <SoftwareSerial.h>
 #include <XBee.h>
 
+
+// TRY with pro to diecimila
+// try with leonardo to pro
+// make sure leonardo to diecimila still works
+// check solder joints
+// modify sendToXBee to dump response
+
 // finally success 2/15/15 11:38AM: Flash in 2174ms!
 
-// Leonardo (usb-serial) is required for (USBDEBUG || NSSDEBUG). Alternatively it could be adpated to use softserial
-// due to my flagrant use of Serial.println, the leonardo may go out of sram if (USBDEBUG || NSSDEBUG) is true :(
-
-// TROUBLESHOOTING. 
-// if flash_init fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) wired correction and is at 115200
+// Leonardo (usb-serial) is required for USBDEBUG. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true :(
 
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
-// NOTE: Weird things can happen if you have too many (USBDEBUG || NSSDEBUG)/println statements as each string literal consumes memory. If the sketch runs out of memeory of course it doesn't function and in some cases it also inhibits Leonardo from uploading sketches
+// NOTE: Weird things can happen if you have too many debug/println statements as each string literal consumes memory. If the sketch runs out of memeory it fails in unexpected ways!
 // Keep your print statements short and concise. If you can't upload, power on leonardo and upload a blank sketch and that should fix it.
 
 // WIRING:
@@ -42,8 +45,8 @@ Due 20 (SDA), 21 (SCL), SDA1, SCL1
 Programmer digital 8 -> reset
 Programmer digital 11 -> XBee RX
 Programmer digital 10 -> XBee TX
-Programmer TX -> app RX
-Programmer RX -> app TX
+Programmer TX -> app arduino RX
+Programmer RX -> app arduino TX
 
 Arduino Pro
 VCC -> 5V regulated
@@ -54,17 +57,19 @@ Also you'll need to press the reset button if you don't have CTS connected (for 
 Leonardo is more flexible since upload occurs over usb-serial
 
 TROUBLESHOOTING
+// if flash_init fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) wired correction and is at 115200
 - check every pin connection, reset, xbee tx/rx (remember arduino tx goes to xbee rx), eeprom, power. make sure all powered devices share a com
-- in a pinch you can disconnect the serial port from the other arduino and set USBDEBUG to true for debug to verify functionality up to flashing (xbee comm and eeprom)
+// TODO test mega
 */
 
-// WARNING: fails on 328. only seems to work on Leonard TODO VERIFY!
-// TODO shorten strings so it doesn't go out of memory
+// Currently goes out of memory on atmega328/168. TODO shorten strings so it doesn't go out of memory
+// Must also enable USBDEBUG or NSSDEBUG. With atmega328/168 you must use NSSDEBUG as the only serial port is for flashing
 #define VERBOSE false
-// Serial Monitor must be open when (USBDEBUG || NSSDEBUG) true
-#define USBDEBUG true
+// WARNING: never set this to true for a atmega328/168 as it needs Serial(0) for programming. If you do it will certainly fail on flash()
+// Only true for Leonardo (defaults to Serial(0) for debug) 
+#define USBDEBUG false
 
-// WARNING UNTESTED!
+// UNTESTED!
 #define NSSDEBUG false
 #define NSSDEBUG_TX 6
 #define NSSDEBUG_RX 7
@@ -78,8 +83,7 @@ TROUBLESHOOTING
 // pins at end of pro board
 const int softTxPin = 11;
 const int softRxPin = 10;
-const int resetPin = 8;
-
+const int resetPin = 9;
 
 // TODO config/setup section
 const uint32_t COORD_MSB_ADDRESS = 0x0013a200;
@@ -89,7 +93,7 @@ const uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
 // For Leonardo this must be Serial1 (UART) or it will try to program through usb-serial
 // For atmega328 use Serial
 // for megas other serials should work -- UNTESTED
-HardwareSerial* progammerSerial = &Serial;
+//HardwareSerial* progammerSerial = &Serial;
 
 // END CONFIG
 
@@ -154,7 +158,14 @@ HardwareSerial* progammerSerial = &Serial;
 #define OK 1
 #define EEPROM_ERROR 0x80
 #define EEPROM_WRITE_ERROR 0x81
+#define EEPROM_READ_ERROR 0xb1
+// serial lines not connected or reset pin not connected
+#define NOBOOTLOADER_ERROR 0xc1
+#define BOOTLOADER_REPLY_TIMEOUT 0xc2
+#define BOOTLOADER_UNEXPECTED_REPLY 0xc3
 #define FLASH_ERROR 0x82
+
+
 
 const int PROG_PAGE_RETRIES = 2;
 const int EEPROM_OFFSET_ADDRESS = 16;
@@ -197,13 +208,13 @@ SoftwareSerial nss(softTxPin, softRxPin);
 
 extEEPROM eeprom(kbits_256, 1, 64);
 
-HardwareSerial* getProgrammerSerial() {
-  return progammerSerial;
-}
-
-//Stream* getProgrammerSerial() {
+//HardwareSerial* getProgrammerSerial() {
 //  return progammerSerial;
 //}
+
+Stream* getProgrammerSerial() {
+  return &Serial;
+}
 
 Stream* getXBeeSerial() {
   return &nss;  
@@ -234,7 +245,10 @@ void clear_read() {
   }
 }
 
-// returns bytes read, -1 if error
+// returns bytes read:
+// returns reply length >= 0
+// -2 if timeout
+// -1 unexpected length
 int read_response(uint8_t len, int timeout) {
   long start = millis();
   int pos = 0;
@@ -251,19 +265,25 @@ int read_response(uint8_t len, int timeout) {
     }
   }
   
+  if (millis() - start >= timeout) {
+    // timeout
+    return -2; 
+  }
+  
   // consume any extra
   clear_read();
   
   if (pos == len) {
     return pos;
+  } else {
+    // TODO return error code instead of strings that take up precious memeory
+    #if (USBDEBUG || NSSDEBUG)
+      getDebugSerial()->print("read timeout! got "); getDebugSerial()->print(pos, DEC); getDebugSerial()->print(" byte, expected "); getDebugSerial()->print(len, DEC); getDebugSerial()->println(" bytes");
+    #endif
+  
+    // unexpected reply length
+    return -1;    
   }
-  
-  // TODO return error code instead of strings that take up precious memeory
-  #if (USBDEBUG || NSSDEBUG)
-    getDebugSerial()->print("read timeout! got "); getDebugSerial()->print(pos, DEC); getDebugSerial()->print(" byte, expected "); getDebugSerial()->print(len, DEC); getDebugSerial()->println(" bytes");
-  #endif
-  
-  return -1;
 }
 
 void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
@@ -288,7 +308,7 @@ void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
 int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
 
     #if (VERBOSE && (USBDEBUG || NSSDEBUG))
-      getDebugSerial()->print("send() unexpected command: "); getDebugSerial()->println(command, HEX);
+      getDebugSerial()->print("send() command: "); getDebugSerial()->println(command, HEX);
     #endif
     
     getProgrammerSerial()->write(command);
@@ -310,7 +330,13 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
   // add 2 bytes since we always expect to get back STK_INSYNC + STK_OK
   int reply_len = read_response(response_length + 2, 5000);
 
-  if (reply_len == -1) {
+  if (reply_len < 0) {
+    if (reply_len == -2) {
+      // timeout
+    } else {
+      // unexpected length
+    }
+
     return -1;
   }
   
@@ -322,14 +348,17 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
     #if (USBDEBUG || NSSDEBUG) 
       getDebugSerial()->println("Invalid response");
     #endif
+ 
     return -1; 
   }
 
   if (read_buffer[0] != STK_INSYNC) {
     #if (USBDEBUG || NSSDEBUG)
-      getDebugSerial()->print("Expected STK_INSYNC but was "); getDebugSerial()->println(read_buffer[0], HEX);
+      getDebugSerial()->print("No STK_INSYNC"); //getDebugSerial()->println(read_buffer[0], HEX);
     #endif
     
+    // pro 2 pro fails here
+    sendToXBee(0xf3);        
     return -1;
   }
   
@@ -337,6 +366,8 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
     #if (USBDEBUG || NSSDEBUG)
       getDebugSerial()->print("Expected STK_OK but was "); getDebugSerial()->println(read_buffer[reply_len - 1], HEX);
     #endif
+    
+    sendToXBee(0xf4);    
     return -1;    
   }
   
@@ -351,7 +382,7 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
   read_buffer[reply_len - 1] = 0;
   
   // success update
-//  update_last_command();
+  // update_last_command();
   
   // return the data portion of the length
   return data_reply;
@@ -366,6 +397,8 @@ int flash_init() {
     data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
     
     if (data_len == -1) {
+     // we're not talking to the bootloader
+     sendToXBee(NOBOOTLOADER_ERROR);
      return -1;   
     }
     
@@ -378,6 +411,7 @@ int flash_init() {
     data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
 
     if (data_len == -1) {
+            sendToXBee(91);
      return -1;   
     }
 
@@ -391,6 +425,7 @@ int flash_init() {
     
     if (data_len == -1) {
       return -1;   
+            sendToXBee(92);
     } else if (read_buffer[0] != 0x3) {
       #if (USBDEBUG || NSSDEBUG)
         getDebugSerial()->print("Unxpected optiboot reply: "); getDebugSerial()->println(read_buffer[0]);
@@ -402,6 +437,7 @@ int flash_init() {
     
     if (data_len != 3) {      
       return -1;      
+            sendToXBee(93);
     } else if (read_buffer[0] == 0x1E && read_buffer[1] == 0x94 && read_buffer[2] == 0x6) {
       //atmega168
     } else if (read_buffer[0] == 0x1E && read_buffer[1] == 0x95 && read_buffer[2] == 0x0f) {
@@ -412,6 +448,8 @@ int flash_init() {
       #if (USBDEBUG || NSSDEBUG)
         dump_buffer(read_buffer, "Unexpected signature: ", 3);
       #endif
+      
+      sendToXBee(94);
       return -1;
     }
     
@@ -576,9 +614,6 @@ int flash(int start_address, int size) {
   #endif
 
   bounce();
-
-  // set to optiboot speed
-  getProgrammerSerial()->begin(115200);
           
   if (flash_init() != 0) {
     #if (USBDEBUG || NSSDEBUG) 
@@ -587,11 +622,12 @@ int flash(int start_address, int size) {
     prog_reset();
     return -1;
   } 
-  
+    
   if (send(STK_ENTER_PROGMODE, buffer, 0, 0) == -1) {
     #if (USBDEBUG || NSSDEBUG) 
       getDebugSerial()->println("STK_ENTER_PROGMODE failure");
     #endif  
+    sendToXBee(0x96);
     return -1;
   }
     
@@ -617,6 +653,7 @@ int flash(int start_address, int size) {
       #if (USBDEBUG || NSSDEBUG) 
         getDebugSerial()->println("EEPROM read fail");
       #endif        
+      sendToXBee(EEPROM_READ_ERROR);         
       return -1;
     }
     
@@ -634,6 +671,7 @@ int flash(int start_address, int size) {
       #if (USBDEBUG || NSSDEBUG) 
         getDebugSerial()->println("Send page fail");
       #endif  
+      sendToXBee(100);      
       return -1;
     }
     
@@ -644,6 +682,7 @@ int flash(int start_address, int size) {
     #if (USBDEBUG || NSSDEBUG) 
       getDebugSerial()->println("STK_LEAVE_PROGMODE failure");
     #endif  
+    sendToXBee(101);
     return -1;       
   }
   
@@ -832,7 +871,11 @@ void handlePacket() {
             #endif              
             return;            
           }         
-          
+
+          // set to optiboot speed
+          //getProgrammerSerial()->begin(115200);
+          Serial.begin(115200);
+  
           if (flash(EEPROM_OFFSET_ADDRESS, prog_size) != 0) {
             #if (USBDEBUG || NSSDEBUG)
               getDebugSerial()->println("Flash failure");
@@ -843,8 +886,9 @@ void handlePacket() {
           }
           
           // resume xbee speed
-          getProgrammerSerial()->begin(9600);
-
+          //getProgrammerSerial()->begin(9600);
+          Serial.begin(9600);
+          
           // reset everything
           prog_reset();
         } else {
@@ -886,7 +930,8 @@ void setup() {
   // Start with 9600 for xbee
   // then switch to 115.2 for flashing for Optiboot
   #if (!USE_SERIAL_FOR_DEBUG)
-    getProgrammerSerial()->begin(9600);
+    //getProgrammerSerial()->begin(9600);
+    Serial.begin(9600);
   #endif
 
   // we only have one Serial port (UART) so need nss for XBee
