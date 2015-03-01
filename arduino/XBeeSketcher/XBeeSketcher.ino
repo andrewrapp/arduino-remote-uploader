@@ -3,20 +3,11 @@
 #include <SoftwareSerial.h>
 #include <XBee.h>
 
-
-// TRY with pro to diecimila
-// try with leonardo to pro
-// make sure leonardo to diecimila still works
-// check solder joints
-// modify sendToXBee to dump response
-
 // finally success 2/15/15 11:38AM: Flash in 2174ms!
 
-// Leonardo (usb-serial) is required for USBDEBUG. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true :(
+// Leonardo (usb-serial) is required for USBDEBUG. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true and it fails in unexpected ways! :(
 
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
-// NOTE: Weird things can happen if you have too many debug/println statements as each string literal consumes memory. If the sketch runs out of memeory it fails in unexpected ways!
-// Keep your print statements short and concise. If you can't upload, power on leonardo and upload a blank sketch and that should fix it.
 
 // WIRING:
 // unfortunately we can't use an xbee shield because we need the serial port for programming. Instead the XBee must use softserial. You can use the shield and wire the 5V,GND,TX/RX of the shield to Arduino
@@ -57,35 +48,14 @@ Also you'll need to press the reset button if you don't have CTS connected (for 
 Leonardo is more flexible since upload occurs over usb-serial
 
 TROUBLESHOOTING
-// if flash_init fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) wired correction and is at 115200
+- if flash_init fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) wired correction and is at 115200
 - check every pin connection, reset, xbee tx/rx (remember arduino tx goes to xbee rx), eeprom, power. make sure all powered devices share a com
-// TODO test mega
+- connection issues: check your solder joints. try different breadboard positions, try different breadboard, try different Arduinos
 */
 
-// Currently goes out of memory on atmega328/168. TODO shorten strings so it doesn't go out of memory
-// Must also enable USBDEBUG or NSSDEBUG. With atmega328/168 you must use NSSDEBUG as the only serial port is for flashing
-#define VERBOSE false
-// WARNING: never set this to true for a atmega328/168 as it needs Serial(0) for programming. If you do it will certainly fail on flash()
-// Only true for Leonardo (defaults to Serial(0) for debug) 
-#define USBDEBUG false
 
-// UNTESTED!
-#define NSSDEBUG false
-#define NSSDEBUG_TX 6
-#define NSSDEBUG_RX 7
-
-// NOTE: ONLY SET THIS TRUE FOR TROUBLESHOOTING. FLASHING IS NOT POSSIBLE IF SET TO TRUE
-#define USE_SERIAL_FOR_DEBUG false
-
-// should we proxy serial rx/tx to softserial (xbee). if only using xbee for programming set to false
-#define PROXY_SERIAL false
-
-// pins at end of pro board
-const int softTxPin = 11;
-const int softRxPin = 10;
-const int resetPin = 9;
-
-// TODO config/setup section
+// CONFIGURATION !!!!!!!!!!!!!!!
+// Specify the XBee coordinator address to send ACKs
 const uint32_t COORD_MSB_ADDRESS = 0x0013a200;
 const uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
 
@@ -94,6 +64,33 @@ const uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
 // For atmega328 use Serial
 // For megas other e.g. Serial2 should work -- UNTESTED!
 HardwareSerial* progammerSerial = &Serial;
+
+// should we proxy serial rx/tx to softserial (xbee). if you want to use the XBee from the application arduino set to true -- if only using xbee for programming set to false
+#define PROXY_SERIAL true
+
+// The remaining config can be left to defaults
+
+// Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
+// Must also enable a debug option (USBDEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing
+#define VERBOSE false
+// WARNING: never set this to true for a atmega328/168 as it needs Serial(0) for programming. If you do it will certainly fail on flash()
+// Only true for Leonardo (defaults to Serial(0) for debug) 
+#define USBDEBUG false
+// UNTESTED!
+#define NSSDEBUG false
+#define NSSDEBUG_TX 6
+#define NSSDEBUG_RX 7
+
+// NOTE: ONLY SET THIS TRUE FOR TROUBLESHOOTING. FLASHING IS NOT POSSIBLE IF SET TO TRUE
+#define USE_SERIAL_FOR_DEBUG false
+
+// these can be swapped to any other free digital pins
+const int xBeeSoftTxPin = 11;
+const int xBeeSoftRxPin = 10;
+const int resetPin = 9;
+
+// eeprom connected to i2c
+
 // END CONFIG
 
 
@@ -198,7 +195,7 @@ int current_eeprom_address = EEPROM_OFFSET_ADDRESS;
 
 //Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
-SoftwareSerial nss(softTxPin, softRxPin);
+SoftwareSerial nss(xBeeSoftTxPin, xBeeSoftRxPin);
 
 #if (NSSDEBUG) 
   SoftwareSerial nss_debug(NSSDEBUG_TX, NSSDEBUG_RX);
