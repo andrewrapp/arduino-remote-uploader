@@ -90,11 +90,10 @@ const uint32_t COORD_MSB_ADDRESS = 0x0013a200;
 const uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
 
 // ** IMPORTANT! **
-// For Leonardo this must be Serial1 (UART) or it will try to program through usb-serial
+// For Leonardo use Serial1 (UART) or it will try to program through usb-serial
 // For atmega328 use Serial
-// for megas other serials should work -- UNTESTED
-//HardwareSerial* progammerSerial = &Serial;
-
+// For megas other e.g. Serial2 should work -- UNTESTED!
+HardwareSerial* progammerSerial = &Serial;
 // END CONFIG
 
 
@@ -165,10 +164,9 @@ const uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
 #define BOOTLOADER_UNEXPECTED_REPLY 0xc3
 #define FLASH_ERROR 0x82
 
-
-
 const int PROG_PAGE_RETRIES = 2;
 const int EEPROM_OFFSET_ADDRESS = 16;
+
 // max time between optiboot commands before we send a noop.. not so relevant when using eeprom
 //const int MAX_OPTI_DELAY = 300;
 // if we don't receive a packet every X ms, timeout
@@ -208,12 +206,8 @@ SoftwareSerial nss(softTxPin, softRxPin);
 
 extEEPROM eeprom(kbits_256, 1, 64);
 
-//HardwareSerial* getProgrammerSerial() {
-//  return progammerSerial;
-//}
-
-Stream* getProgrammerSerial() {
-  return &Serial;
+HardwareSerial* getProgrammerSerial() {
+  return progammerSerial;
 }
 
 Stream* getXBeeSerial() {
@@ -873,8 +867,7 @@ void handlePacket() {
           }         
 
           // set to optiboot speed
-          //getProgrammerSerial()->begin(115200);
-          Serial.begin(115200);
+          getProgrammerSerial()->begin(115200);
   
           if (flash(EEPROM_OFFSET_ADDRESS, prog_size) != 0) {
             #if (USBDEBUG || NSSDEBUG)
@@ -886,8 +879,7 @@ void handlePacket() {
           }
           
           // resume xbee speed
-          //getProgrammerSerial()->begin(9600);
-          Serial.begin(9600);
+          getProgrammerSerial()->begin(9600);
           
           // reset everything
           prog_reset();
@@ -914,15 +906,13 @@ void setup() {
   #if (USBDEBUG)
     // start usb serial on leonardo for DEBUGging
     // usb-serial @19200 could go higher  
+    // TODO use getDebugSerial or variable
     Serial.begin(19200);    
     // only necessary for leonardo
     while (!Serial);
   #elif (NSSDEBUG) 
     nss_debug.begin(19200);
   #endif
-  
-  //delay(5000);
-  //Serial.println("Hi");
   
   pinMode(resetPin, OUTPUT);
   
