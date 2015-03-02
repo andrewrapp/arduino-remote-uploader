@@ -187,6 +187,9 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				if (response.isSuccess() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
 //					System.out.print("#");					
 				} else {
+					// TODO handle retries
+					
+					
 					// that radio is powered on
 					throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", response " + response);
 				}

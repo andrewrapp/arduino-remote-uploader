@@ -4,9 +4,11 @@ void setup() {
   pinMode(led, OUTPUT);     
 }
 
+int wait = 50;
+
 void loop() {
   digitalWrite(led, HIGH);
-  delay(1000);
+  delay(wait);
   digitalWrite(led, LOW);
-  delay(1000);
+  delay(wait);
 }
