@@ -1,3 +1,22 @@
+/**
+ * Copyright (c) 2015 Andrew Rapp. All rights reserved.
+ *
+ * This file is part of arduino-sketcher
+ *
+ * arduino-sketcher is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * arduino-sketcher is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package com.rapplogic.sketcher.xbee;
 
 import java.io.IOException;
@@ -36,10 +55,8 @@ import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse.DeliveryStatus;
  *
  */
 public class XBeeSketchLoader extends SketchLoaderCore {
-
-	public XBeeSketchLoader() {
-		super();
-	}
+	
+	final List<Integer> messages = Lists.newArrayList();
 	
 	// block size for eeprom writes
 	final int PAGE_SIZE = 64;
@@ -55,14 +72,17 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 	final int FAILURE = 2;
 	// too much time has passed between receiving packets
 	final int TIMEOUT = 3;
-	
-	
+		
 	final int EEPROM_ERROR = 3;
 	
 	// xbee just woke, send programming now!
 	//final int WAKE = 4;
 	
 	final Object lock = new Object();
+	
+	public XBeeSketchLoader() {
+		super();
+	}
 	
 	private int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage) {
 		return new int[] { 
@@ -113,8 +133,6 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 			}
 		}
 	}
-
-	final List<Integer> messages = Lists.newArrayList();
 	
 	public void process(String file, String device, int speed, String xbeeAddress, boolean verbose) throws IOException {
 		// page size is max packet size for the radio

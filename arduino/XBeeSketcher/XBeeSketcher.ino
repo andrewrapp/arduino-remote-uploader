@@ -1,3 +1,22 @@
+/**
+ * Copyright (c) 2015 Andrew Rapp. All rights reserved.
+ *
+ * This file is part of arduino-sketcher
+ *
+ * arduino-sketcher is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * arduino-sketcher is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
+ */
+ 
 #include <Wire.h>
 #include <extEEPROM.h>
 #include <SoftwareSerial.h>
@@ -54,7 +73,8 @@ TROUBLESHOOTING
 */
 
 
-// CONFIGURATION !!!!!!!!!!!!!!!
+// ================================================================== END CONFIG ==================================================================
+
 // Specify the XBee coordinator address to send ACKs
 const uint32_t COORD_MSB_ADDRESS = 0x0013a200;
 const uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
@@ -68,7 +88,13 @@ HardwareSerial* progammerSerial = &Serial;
 // should we proxy serial rx/tx to softserial (xbee). if you want to use the XBee from the application arduino set to true -- if only using xbee for programming set to false
 #define PROXY_SERIAL true
 
-// The remaining config can be left to defaults
+// The remaining config should be fine for vast majority of cases
+
+// max time between xbee packets before timeout occurs and it kicks out of programming mode
+const long XBEE_TIMEOUT = 5000;
+
+// how long to wait for a reply from optiboot before timeout (ms)
+#define OPTIBOOT_READ_TIMEOUT 1000
 
 // Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
 // Must also enable a debug option (USBDEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing
@@ -89,56 +115,21 @@ const int xBeeSoftTxPin = 11;
 const int xBeeSoftRxPin = 10;
 const int resetPin = 9;
 
-// eeprom connected to i2c
-
-// END CONFIG
-
-
-// only need 128=> + 4 bytes len/addr
+// this can be reduced to the maximum packet size + header bytes
 // memory shouldn't be an issue on the programmer since it only should ever run this sketch!
 #define BUFFER_SIZE 150
 #define READ_BUFFER_SIZE 150
 
-#define STK_OK              0x10
-#define STK_FAILED          0x11  // Not used
-#define STK_UNKNOWN         0x12  // Not used
-#define STK_NODEVICE        0x13  // Not used
-#define STK_INSYNC          0x14  // ' '
-#define STK_NOSYNC          0x15  // Not used
-#define ADC_CHANNEL_ERROR   0x16  // Not used
-#define ADC_MEASURE_OK      0x17  // Not used
-#define PWM_CHANNEL_ERROR   0x18  // Not used
-#define PWM_ADJUST_OK       0x19  // Not used
-#define CRC_EOP             0x20  // 'SPACE'
-#define STK_GET_SYNC        0x30  // '0'
-#define STK_GET_SIGN_ON     0x31  // '1'
-#define STK_SET_PARAMETER   0x40  // '@'
-#define STK_GET_PARAMETER   0x41  // 'A'
-#define STK_SET_DEVICE      0x42  // 'B'
-#define STK_SET_DEVICE_EXT  0x45  // 'E'
-#define STK_ENTER_PROGMODE  0x50  // 'P'
-#define STK_LEAVE_PROGMODE  0x51  // 'Q'
-#define STK_CHIP_ERASE      0x52  // 'R'
-#define STK_CHECK_AUTOINC   0x53  // 'S'
-#define STK_LOAD_ADDRESS    0x55  // 'U'
-#define STK_UNIVERSAL       0x56  // 'V'
-#define STK_PROG_FLASH      0x60  // '`'
-#define STK_PROG_DATA       0x61  // 'a'
-#define STK_PROG_FUSE       0x62  // 'b'
-#define STK_PROG_LOCK       0x63  // 'c'
-#define STK_PROG_PAGE       0x64  // 'd'
-#define STK_PROG_FUSE_EXT   0x65  // 'e'
-#define STK_READ_FLASH      0x70  // 'p'
-#define STK_READ_DATA       0x71  // 'q'
-#define STK_READ_FUSE       0x72  // 'r'
-#define STK_READ_LOCK       0x73  // 's'
-#define STK_READ_PAGE       0x74  // 't'
-#define STK_READ_SIGN       0x75  // 'u'
-#define STK_READ_OSCCAL     0x76  // 'v'
-#define STK_READ_FUSE_EXT   0x77  // 'w'
-#define STK_READ_OSCCAL_EXT 0x78  // 'x'
+// TODO not implemented yet
+const int PROG_PAGE_RETRIES = 2;
+// the address to start writing the hex to the eeprom
+const int EEPROM_OFFSET_ADDRESS = 16;
 
-//??
+// ==================================================================END CONFIG ==================================================================
+
+// TODO define negaive error codes for sketch only. translate to byte error code and send to XBee
+
+// any packet that has byte1 and byte 2 that equals these is a programming packet
 #define MAGIC_BYTE1 0xef
 #define MAGIC_BYTE2 0xac
 
@@ -161,13 +152,19 @@ const int resetPin = 9;
 #define BOOTLOADER_UNEXPECTED_REPLY 0xc3
 #define FLASH_ERROR 0x82
 
-const int PROG_PAGE_RETRIES = 2;
-const int EEPROM_OFFSET_ADDRESS = 16;
+// STK CONSTANTS
+#define STK_OK              0x10
+#define STK_INSYNC          0x14  // ' '
+#define CRC_EOP             0x20  // 'SPACE'
+#define STK_GET_PARAMETER   0x41  // 'A'
+#define STK_ENTER_PROGMODE  0x50  // 'P'
+#define STK_LEAVE_PROGMODE  0x51  // 'Q'
+#define STK_LOAD_ADDRESS    0x55  // 'U'
+#define STK_PROG_PAGE       0x64  // 'd'
+#define STK_READ_PAGE       0x74  // 't'
+#define STK_READ_SIGN       0x75  // 'u'
 
-// max time between optiboot commands before we send a noop.. not so relevant when using eeprom
-//const int MAX_OPTI_DELAY = 300;
-// if we don't receive a packet every X ms, timeout
-const long XBEE_TIMEOUT = 5000;
+// =========================================================================
 
 XBee xbee = XBee();
 XBeeResponse response = XBeeResponse();
@@ -211,7 +208,7 @@ Stream* getXBeeSerial() {
   return &nss;  
 }
 
-// can only use (USBDEBUG || NSSDEBUG) with Leonardo or other variant that supports multiple serial ports
+// can only use USBDEBUG with Leonardo or other variant that supports multiple serial ports
 #if (USBDEBUG)
   Stream* getDebugSerial() {
     return &Serial;  
@@ -240,7 +237,7 @@ void clear_read() {
 // returns reply length >= 0
 // -2 if timeout
 // -1 unexpected length
-int read_response(uint8_t len, int timeout) {
+int read_optiboot_reply(uint8_t len, int timeout) {
   long start = millis();
   int pos = 0;
 
@@ -295,8 +292,9 @@ void dump_buffer(uint8_t arr[], char context[], uint8_t len) {
   #endif
 }
 
-// Send command and buffer and return length of reply
-int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
+// send command and buffer and return length of reply
+// success >= 0, otherwise error code
+int send_to_optiboot(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
 
     #if (VERBOSE && (USBDEBUG || NSSDEBUG))
       getDebugSerial()->print("send() command: "); getDebugSerial()->println(command, HEX);
@@ -310,7 +308,7 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
     }
     
     #if (VERBOSE && (USBDEBUG || NSSDEBUG)) 
-      dump_buffer(arr, "send()->", len);
+      dump_buffer(arr, "send->", len);
     #endif
   }
   
@@ -319,7 +317,7 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
   getProgrammerSerial()->flush();
       
   // add 2 bytes since we always expect to get back STK_INSYNC + STK_OK
-  int reply_len = read_response(response_length + 2, 5000);
+  int reply_len = read_optiboot_reply(response_length + 2, OPTIBOOT_READ_TIMEOUT);
 
   if (reply_len < 0) {
     if (reply_len == -2) {
@@ -347,9 +345,7 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
     #if (USBDEBUG || NSSDEBUG)
       getDebugSerial()->print("No STK_INSYNC"); //getDebugSerial()->println(read_buffer[0], HEX);
     #endif
-    
-    // pro 2 pro fails here
-    sendToXBee(0xf3);        
+
     return -1;
   }
   
@@ -358,7 +354,6 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
       getDebugSerial()->print("Expected STK_OK but was "); getDebugSerial()->println(read_buffer[reply_len - 1], HEX);
     #endif
     
-    sendToXBee(0xf4);    
     return -1;    
   }
   
@@ -372,23 +367,21 @@ int send(uint8_t command, uint8_t *arr, uint8_t len, uint8_t response_length) {
   // zero the ok
   read_buffer[reply_len - 1] = 0;
   
-  // success update
-  // update_last_command();
-  
   // return the data portion of the length
   return data_reply;
 }
 
+// returns 0 if success, < 0 on error
 int flash_init() {
   clear_read();
     
     int data_len = 0;
     
     cmd_buffer[0] = 0x81;
-    data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
+    data_len = send_to_optiboot(STK_GET_PARAMETER, cmd_buffer, 1, 1);
     
     if (data_len == -1) {
-     // we're not talking to the bootloader
+     // seems that we're not talking to the bootloader
      sendToXBee(NOBOOTLOADER_ERROR);
      return -1;   
     }
@@ -399,11 +392,10 @@ int flash_init() {
 
     
     cmd_buffer[0] = 0x82;
-    data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
+    data_len = send_to_optiboot(STK_GET_PARAMETER, cmd_buffer, 1, 1);
 
     if (data_len == -1) {
-            sendToXBee(91);
-     return -1;   
+      return -1;   
     }
 
     #if (VERBOSE && (USBDEBUG || NSSDEBUG))
@@ -412,11 +404,10 @@ int flash_init() {
     
     // this not a valid command. optiboot will send back 0x3 for anything it doesn't understand
     cmd_buffer[0] = 0x83;
-    data_len = send(STK_GET_PARAMETER, cmd_buffer, 1, 1);
+    data_len = send_to_optiboot(STK_GET_PARAMETER, cmd_buffer, 1, 1);
     
     if (data_len == -1) {
       return -1;   
-            sendToXBee(92);
     } else if (read_buffer[0] != 0x3) {
       #if (USBDEBUG || NSSDEBUG)
         getDebugSerial()->print("Unxpected optiboot reply: "); getDebugSerial()->println(read_buffer[0]);
@@ -424,11 +415,10 @@ int flash_init() {
       return -1;
     }
 
-    data_len = send(STK_READ_SIGN, NULL, 0, 3);
+    data_len = send_to_optiboot(STK_READ_SIGN, NULL, 0, 3);
     
     if (data_len != 3) {      
       return -1;      
-            sendToXBee(93);
     } else if (read_buffer[0] == 0x1E && read_buffer[1] == 0x94 && read_buffer[2] == 0x6) {
       //atmega168
     } else if (read_buffer[0] == 0x1E && read_buffer[1] == 0x95 && read_buffer[2] == 0x0f) {
@@ -439,8 +429,7 @@ int flash_init() {
       #if (USBDEBUG || NSSDEBUG)
         dump_buffer(read_buffer, "Unexpected signature: ", 3);
       #endif
-      
-      sendToXBee(94);
+
       return -1;
     }
     
@@ -450,12 +439,13 @@ int flash_init() {
   
     // IGNORED BY OPTIBOOT
     // avrdude does a set device
-    //avrdude: Send: B [42] . [86] . [00] . [00] . [01] . [01] . [01] . [01] . [03] . [ff] . [ff] . [ff] . [ff] . [00] . [80] . [02] . [00] . [00] . [00] @ [40] . [00]   [20]     
+    //avrdude: send: B [42] . [86] . [00] . [00] . [01] . [01] . [01] . [01] . [03] . [ff] . [ff] . [ff] . [ff] . [00] . [80] . [02] . [00] . [00] . [00] @ [40] . [00]   [20]     
     // then set device ext
-    //avrdude: Send: E [45] . [05] . [04] . [d7] . [c2] . [00]   [20]     
+    //avrdude: send: E [45] . [05] . [04] . [d7] . [c2] . [00]   [20]     
     return 0;
 }
 
+// returns 0 on success, < 0 on error
 // need 3 bytes for prog_page so data should start at buf[3]
 int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {    
     // ctrl,len,addr high/low
@@ -465,7 +455,7 @@ int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {
     // disable retries for DEBUGging
     //for (int z = 0; z < PROG_PAGE_RETRIES + 1; z++) {
       // [55] . [00] . [00] 
-      if (send(STK_LOAD_ADDRESS, addr, 2, 0) == -1) {
+      if (send_to_optiboot(STK_LOAD_ADDRESS, addr, 2, 0) == -1) {
         #if (USBDEBUG || NSSDEBUG) 
           getDebugSerial()->println("Load address failed");          
         #endif
@@ -484,14 +474,14 @@ int send_page(uint8_t *addr, uint8_t *buf, uint8_t data_len) {
       //remaining buffer is data
       
       // add 3 to data_len
-      if (send(STK_PROG_PAGE, buffer, data_len + 3, 0) == -1) {
+      if (send_to_optiboot(STK_PROG_PAGE, buffer, data_len + 3, 0) == -1) {
         #if (USBDEBUG || NSSDEBUG) 
           getDebugSerial()->println("Prog page failed");
         #endif        
         return -1;
       }
   
-      uint8_t reply_len = send(STK_READ_PAGE, buffer, 3, data_len);
+      uint8_t reply_len = send_to_optiboot(STK_READ_PAGE, buffer, 3, data_len);
       
       if (reply_len == -1) {
         #if (USBDEBUG || NSSDEBUG) 
@@ -561,7 +551,7 @@ void prog_reset() {
 }
 
 // borrowed from xbee api. send bytes with proper escaping
-void sendByte(uint8_t b, bool escape) {
+void send_xbee_packet(uint8_t b, bool escape) {
   if (escape && (b == START_BYTE || b == ESCAPE || b == XON || b == XOFF)) {
     getProgrammerSerial()->write(ESCAPE);    
     getProgrammerSerial()->write(b ^ 0x20);
@@ -581,20 +571,21 @@ void forwardPacket() {
   #endif
         
   // send start byte, length, api, then frame data + checksum
-  sendByte(START_BYTE, false);
-  sendByte(xbee.getResponse().getMsbLength(), true);
-  sendByte(xbee.getResponse().getLsbLength(), true);        
-  sendByte(xbee.getResponse().getApiId(), true);
+  send_xbee_packet(START_BYTE, false);
+  send_xbee_packet(xbee.getResponse().getMsbLength(), true);
+  send_xbee_packet(xbee.getResponse().getLsbLength(), true);        
+  send_xbee_packet(xbee.getResponse().getApiId(), true);
 
   uint8_t* frameData = xbee.getResponse().getFrameData();
    
   for (int i = 0; i < xbee.getResponse().getFrameDataLength(); i++) {
-    sendByte(*(frameData + i), true);
+    send_xbee_packet(*(frameData + i), true);
   }
    
-   sendByte(xbee.getResponse().getChecksum(), true);  
+   send_xbee_packet(xbee.getResponse().getChecksum(), true);  
 }
 
+// returns 0 on success, < 0 on error
 // blocking. takes about 1208ms for a small sketch (2KB)
 int flash(int start_address, int size) {
   // now read from eeprom and program  
@@ -614,11 +605,11 @@ int flash(int start_address, int size) {
     return -1;
   } 
     
-  if (send(STK_ENTER_PROGMODE, buffer, 0, 0) == -1) {
+  if (send_to_optiboot(STK_ENTER_PROGMODE, buffer, 0, 0) == -1) {
     #if (USBDEBUG || NSSDEBUG) 
       getDebugSerial()->println("STK_ENTER_PROGMODE failure");
     #endif  
-    sendToXBee(0x96);
+    
     return -1;
   }
     
@@ -643,8 +634,10 @@ int flash(int start_address, int size) {
     if (ok != 0) {
       #if (USBDEBUG || NSSDEBUG) 
         getDebugSerial()->println("EEPROM read fail");
-      #endif        
-      sendToXBee(EEPROM_READ_ERROR);         
+      #endif
+      
+      sendToXBee(EEPROM_READ_ERROR);     
+      
       return -1;
     }
     
@@ -654,26 +647,26 @@ int flash(int start_address, int size) {
     addr[1] = (((current_address - start_address) / 2) >> 8) & 0xff;
     
     #if (VERBOSE && (USBDEBUG || NSSDEBUG))
-      getDebugSerial()->print("Sending page len: "); getDebugSerial()->println(len, DEC);            
+      getDebugSerial()->print("send page len: "); getDebugSerial()->println(len, DEC);            
       dump_buffer(buffer + 3, "read from eeprom->", len);
     #endif
                   
     if (send_page(addr, buffer, len) == -1) {
       #if (USBDEBUG || NSSDEBUG) 
-        getDebugSerial()->println("Send page fail");
+        getDebugSerial()->println("send page fail");
       #endif  
-      sendToXBee(100);      
+
       return -1;
     }
     
     current_address+= len;
   }
   
-  if (send(STK_LEAVE_PROGMODE, buffer, 0, 0) == -1) {
+  if (send_to_optiboot(STK_LEAVE_PROGMODE, buffer, 0, 0) == -1) {
     #if (USBDEBUG || NSSDEBUG) 
       getDebugSerial()->println("STK_LEAVE_PROGMODE failure");
     #endif  
-    sendToXBee(101);
+
     return -1;       
   }
   
@@ -705,7 +698,7 @@ int sendToXBee(uint8_t status) {
   // TODO send with magic packet host can differentiate between relayed packets and programming ACKS
   xbee.send(tx);
   
-  // after sending a tx request, we expect a status response
+  // after send a tx request, we expect a status response
   // wait up to half second for the status response
   if (xbee.readPacket(1000)) {    
     if (xbee.getResponse().getApiId() == ZB_TX_STATUS_RESPONSE) {
@@ -905,7 +898,7 @@ void setup() {
     // usb-serial @19200 could go higher  
     // TODO use getDebugSerial or variable
     Serial.begin(19200);    
-    // only necessary for leonardo
+    // only necessary for leonardo. safe for others
     while (!Serial);
   #elif (NSSDEBUG) 
     nss_debug.begin(19200);
@@ -940,8 +933,6 @@ void setup() {
 
 void loop() {  
   xbee.readPacket();
-
-  // target arduino must be a 328 that is programmed via serial port
   
   if (xbee.getResponse().isAvailable()) {  
     // if not programming packet, relay exact bytes to the arduino. need to figure out how to get from library
