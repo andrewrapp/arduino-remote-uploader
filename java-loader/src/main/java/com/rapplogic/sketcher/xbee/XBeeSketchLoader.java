@@ -246,9 +246,9 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		return result;
 	}
 
-	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
+	private static void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException {
 		Options options = new Options();
-
+		
 		// cli doesn't allow single dashes in args which is insane!
 		final String sketch = "sketch_hex";
 		final String serialPort = "serial_port";
@@ -271,7 +271,28 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		if (cmd.hasOption(verboseArg)) {
 			verbose = true;
 		}
-
-		new XBeeSketchLoader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), Integer.parseInt(cmd.getOptionValue(baudRate)), cmd.getOptionValue(xbeeAddress), verbose);
+		
+		int baud = 0;
+		
+		try {
+			baud = Integer.parseInt(cmd.getOptionValue(baudRate));
+		} catch (NumberFormatException e) {
+			System.err.println("Baud rate is required and must be a positive integer");
+			return;
+		}
+		
+		// cmd line
+		new XBeeSketchLoader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), baud, cmd.getOptionValue(xbeeAddress), verbose);
+	}
+	
+	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
+		initLog4j();
+		
+		if (true) {
+			runFromCmdLine(args);
+		} else {
+			// run from eclipse for dev
+			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true);			
+		}
 	}
 }

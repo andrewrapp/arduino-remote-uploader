@@ -24,6 +24,11 @@ import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.List;
 
+import org.apache.log4j.ConsoleAppender;
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
+import org.apache.log4j.PatternLayout;
+
 import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 
@@ -192,5 +197,18 @@ public class SketchLoaderCore {
 		}
 		
 		return new Sketch(program.length, pages, pageSize);
+	}
+	
+	protected static void initLog4j() {
+		  ConsoleAppender console = new ConsoleAppender();
+		  String PATTERN = "%d [%p|%c|%C{1}] %m%n";
+		  console.setLayout(new PatternLayout(PATTERN)); 
+		  console.activateOptions();
+		  // only log this package
+		  Logger.getLogger(SketchLoaderCore.class.getPackage().getName()).addAppender(console);
+		  Logger.getLogger(SketchLoaderCore.class.getPackage().getName()).setLevel(Level.ERROR);
+		  Logger.getRootLogger().addAppender(console);
+		  // quiet logger
+		  Logger.getRootLogger().setLevel(Level.ERROR);
 	}
 }
