@@ -910,8 +910,7 @@ void setup() {
   // Start with 9600 for xbee
   // then switch to 115.2 for flashing for Optiboot
   #if (!USE_SERIAL_FOR_DEBUG)
-    //getProgrammerSerial()->begin(9600);
-    Serial.begin(9600);
+    getProgrammerSerial()->begin(9600);
   #endif
 
   // we only have one Serial port (UART) so need nss for XBee
