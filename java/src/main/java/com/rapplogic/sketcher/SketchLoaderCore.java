@@ -22,8 +22,11 @@ package com.rapplogic.sketcher;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 
+import org.apache.commons.codec.binary.Hex;
 import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -33,7 +36,7 @@ import com.google.common.collect.Lists;
 import com.google.common.io.Files;
 
 /**
- * Parses a intex hex AVR/Arduino Program into an object representation with a user defined page-size
+ * Parses a intel hex AVR/Arduino Program into an object representation with a user defined page-size
  * 
  * @author andrew
  *
@@ -46,6 +49,24 @@ public class SketchLoaderCore {
 	public SketchLoaderCore() {
 
 	}
+	
+	public String getMd5(int[] program) {
+		MessageDigest messageDigest;
+		
+		try {
+			messageDigest = MessageDigest.getInstance("MD5");
+		} catch (NoSuchAlgorithmException e) {
+			//srlsy??
+			throw new RuntimeException("", e);
+		}
+		
+		for (int i = 0; i < program.length; i++) {
+			messageDigest.update((byte)i);	
+		}
+		
+		return new String(Hex.encodeHex(messageDigest.digest()));
+	}
+	
 	
 	/**
 	 * Parse an intel hex file into an array of bytes
@@ -196,7 +217,7 @@ public class SketchLoaderCore {
 			count++;
 		}
 		
-		return new Sketch(program.length, pages, pageSize);
+		return new Sketch(program.length, pages, pageSize, program);
 	}
 	
 	protected static void initLog4j() {

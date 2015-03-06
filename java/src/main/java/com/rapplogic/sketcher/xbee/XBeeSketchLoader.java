@@ -177,7 +177,8 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 			long start = System.currentTimeMillis();
 			
 			// send header:  size + #pages
-			System.out.println("Sending sketch to xbee radio with address " + xBeeAddress64.toString() + ", size " + sketch.getSize() + " bytes, number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet");			
+			System.out.println("Sending sketch to xbee radio with address " + xBeeAddress64.toString() + ", size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet");			
+			
 			ZNetTxStatusResponse response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(xBeeAddress64, getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));			
 			
 			if (response.isError() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
@@ -288,11 +289,11 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
 		initLog4j();
 		
-		if (true) {
+		if (false) {
 			runFromCmdLine(args);
 		} else {
 			// run from eclipse for dev
-			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketch-loader/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true);			
+			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true);			
 		}
 	}
 }

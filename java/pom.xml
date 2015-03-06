@@ -3,7 +3,7 @@
                       http://maven.apache.org/xsd/maven-4.0.0.xsd">
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>com.rapplogic</groupId>
-	<artifactId>sketcher</artifactId>
+	<artifactId>arduino-sketcher</artifactId>
 	<packaging>jar</packaging>
 	<version>1.0-SNAPSHOT</version>
 	<name></name>
@@ -66,6 +66,13 @@
 			<artifactId>log4j</artifactId>
 			<version>1.2.16</version>
 		</dependency>	
+		<dependency>
+			<groupId>commons-codec</groupId>
+			<artifactId>commons-codec</artifactId>
+			<version>1.9</version>
+		</dependency>
+		
+		
 <!-- 
 <dependency>
   <groupId>net.sf.jopt-simple</groupId>
