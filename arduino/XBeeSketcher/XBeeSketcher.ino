@@ -577,41 +577,6 @@ void prog_reset() {
   current_eeprom_address = EEPROM_OFFSET_ADDRESS;
 }
 
-// borrowed from xbee api. send bytes with proper escaping
-void send_xbee_packet(uint8_t b, bool escape) {
-  if (escape && (b == START_BYTE || b == ESCAPE || b == XON || b == XOFF)) {
-    getProgrammerSerial()->write(ESCAPE);    
-    getProgrammerSerial()->write(b ^ 0x20);
-  } else {
-    getProgrammerSerial()->write(b);
-  }
-  
-  getProgrammerSerial()->flush();
-}
-
-void forwardPacket() {
-  // not programming packet, so proxy all xbee traffic to Arduino
-  // prob cleaner way to do this if I think about it some more
-  
-  #if (USBDEBUG || NSSDEBUG) 
-    getDebugSerial()->println("Forwarding packet");    
-  #endif
-        
-  // send start byte, length, api, then frame data + checksum
-  send_xbee_packet(START_BYTE, false);
-  send_xbee_packet(xbee.getResponse().getMsbLength(), true);
-  send_xbee_packet(xbee.getResponse().getLsbLength(), true);        
-  send_xbee_packet(xbee.getResponse().getApiId(), true);
-
-  uint8_t* frameData = xbee.getResponse().getFrameData();
-   
-  for (int i = 0; i < xbee.getResponse().getFrameDataLength(); i++) {
-    send_xbee_packet(*(frameData + i), true);
-  }
-   
-   send_xbee_packet(xbee.getResponse().getChecksum(), true);  
-}
-
 // returns 0 on success, < 0 on error
 // blocking. takes about 1208ms for a small sketch (2KB)
 int flash(int start_address, int size) {
@@ -719,6 +684,13 @@ void bounce() {
     delay(300);
 }
  
+bool isProgrammingPacket(uint8_t packet[], uint8_t packet_length) {
+  if (packet_length >= 4 && packet[0] == MAGIC_BYTE1 && packet[1] == MAGIC_BYTE2) {          
+    return true;
+  }
+  
+  return false;
+}
 // not specific to the transport
 // process packet and return reply code for host
 int handlePacket(uint8_t packet[], uint8_t packet_length) {
@@ -875,15 +847,10 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
         // update so we know when to timeout
         last_packet = millis();
         return OK;
-      } else {
-        // not a programming packet. forward along
-        if (PROXY_SERIAL) {
-          forwardPacket();                  
-        }
       }
 }
 
-// Only the following functions are transport specific
+// Only the following functions shoudl be transport specific
 
 void setup() {  
   // leonardo wait for serial
@@ -987,6 +954,42 @@ int sendReply(uint8_t status) {
   return -1;
 }
 
+
+// borrowed from xbee api. send bytes with proper escaping
+void send_xbee_packet(uint8_t b, bool escape) {
+  if (escape && (b == START_BYTE || b == ESCAPE || b == XON || b == XOFF)) {
+    getProgrammerSerial()->write(ESCAPE);    
+    getProgrammerSerial()->write(b ^ 0x20);
+  } else {
+    getProgrammerSerial()->write(b);
+  }
+  
+  getProgrammerSerial()->flush();
+}
+
+void forwardPacket() {
+  // not programming packet, so proxy all xbee traffic to Arduino
+  // prob cleaner way to do this if I think about it some more
+  
+  #if (USBDEBUG || NSSDEBUG) 
+    getDebugSerial()->println("Forwarding packet");    
+  #endif
+        
+  // send start byte, length, api, then frame data + checksum
+  send_xbee_packet(START_BYTE, false);
+  send_xbee_packet(xbee.getResponse().getMsbLength(), true);
+  send_xbee_packet(xbee.getResponse().getLsbLength(), true);        
+  send_xbee_packet(xbee.getResponse().getApiId(), true);
+
+  uint8_t* frameData = xbee.getResponse().getFrameData();
+   
+  for (int i = 0; i < xbee.getResponse().getFrameDataLength(); i++) {
+    send_xbee_packet(*(frameData + i), true);
+  }
+   
+   send_xbee_packet(xbee.getResponse().getChecksum(), true);  
+}
+
 void loop() {  
   xbee.readPacket();
   
@@ -997,14 +1000,22 @@ void loop() {
       if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE) {      
         // now fill our zb rx class
         xbee.getResponse().getZBRxResponse(rx);
-        // send the packet array, length to be processed
-        int response = handlePacket(xbee.getResponse().getFrameData() + rx.getDataOffset(), rx.getDataLength());
         
-        if (response != OK) {
-          prog_reset();
+        if (rx.getDataLength() > 4 && isProgrammingPacket(xbee.getResponse().getFrameData() + rx.getDataOffset(), rx.getDataLength())) {
+          // send the packet array, length to be processed
+          int response = handlePacket(xbee.getResponse().getFrameData() + rx.getDataOffset(), rx.getDataLength());
+          
+          if (response != OK) {
+            prog_reset();
+          }
+          
+          sendReply(response);          
+        } else {
+          // not a programming packet. forward along
+          if (PROXY_SERIAL) {
+            forwardPacket();                  
+          }          
         }
-        
-        sendReply(response);
       }
   } else if (xbee.getResponse().isError()) {
     #if (USBDEBUG || NSSDEBUG) 
