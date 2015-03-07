@@ -682,6 +682,15 @@ bool isProgrammingPacket(uint8_t packet[], uint8_t packet_length) {
   
   return false;
 }
+
+bool isFlashPacket(uint8_t packet[]) {
+  if (packet[2] == CONTROL_FLASH_START) {
+    return true;
+  }
+  
+  return false;
+}
+
 // not specific to the transport
 // process packet and return reply code for host
 int handlePacket(uint8_t packet[], uint8_t packet_length) {
@@ -699,7 +708,6 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
         
       // 3 bytes for head + at least one programming
       // TODO also check rx.getData(2) is one of CONTROL_PROG_X for extra measure of ensuring we are not acting on a application packet
-      if (packet_length >= 4 && packet[0] == MAGIC_BYTE1 && packet[1] == MAGIC_BYTE2) {          
         // echo * for each programming packet
         #if (USBDEBUG || NSSDEBUG) 
           getDebugSerial()->print("*");
@@ -788,7 +796,7 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
           
           // TODO write a checksum in eeprom header so we can verify prior to flashing                          
           // prog data
-        } else if (packet[2] == CONTROL_FLASH_START && in_prog) {
+        } else if (isFlashPacket(packet) && in_prog) {
           // done verify we got expected # packets
 
           #if (USBDEBUG || NSSDEBUG) 
@@ -818,11 +826,7 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
             #endif              
             return FLASH_ERROR;
           }
-          
-          // TODO make this instead default baud rate or non-flash baud
-          // resume xbee speed
-          getProgrammerSerial()->begin(9600);
-          
+                    
           // reset everything
           prog_reset();
         } else {
@@ -838,7 +842,6 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
         // update so we know when to timeout
         last_packet = millis();
         return OK;
-      }
 }
 
 int setup_core() {

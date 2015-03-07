@@ -158,12 +158,24 @@ void loop() {
         // now fill our zb rx class
         xbee.getResponse().getZBRxResponse(rx);
         
-        if (rx.getDataLength() > 4 && isProgrammingPacket(xbee.getResponse().getFrameData() + rx.getDataOffset(), rx.getDataLength())) {
+        // pointer of data position in response
+        uint8_t *packet = xbee.getResponse().getFrameData() + rx.getDataOffset();
+        
+        if (rx.getDataLength() > 4 && isProgrammingPacket(packet, rx.getDataLength())) {
           // send the packet array, length to be processed
-          int response = handlePacket(xbee.getResponse().getFrameData() + rx.getDataOffset(), rx.getDataLength());
+          int response = handlePacket(packet, rx.getDataLength());
           
           if (response != OK) {
             prog_reset();
+          }
+          
+          if (isFlashPacket(packet)) {
+            if (PROXY_SERIAL) {
+              // we flashed to reset baud rate for proxying
+              // TODO make this instead default baud rate or non-flash baud
+              // resume xbee speed
+              getProgrammerSerial()->begin(XBEE_BAUD_RATE);              
+            }
           }
           
           sendReply(response);          
