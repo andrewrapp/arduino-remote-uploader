@@ -23,6 +23,9 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -69,16 +72,14 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 	final int CONTROL_START_FLASH = 0x40; 	//1000000
 	
 	final int OK = 1;
-	final int FAILURE = 2;
-	// too much time has passed between receiving packets
+	final int START_OVER = 2;
 	final int TIMEOUT = 3;
-		
-	final int EEPROM_ERROR = 3;
 	
 	// xbee just woke, send programming now!
 	//final int WAKE = 4;
 	
-	final Object lock = new Object();
+	final ReentrantLock lock = new ReentrantLock();
+	final Condition rxPacketCondition = lock.newCondition();
 	
 	public XBeeSketchLoader() {
 		super();
@@ -116,25 +117,35 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		return getHeader(CONTROL_START_FLASH, progSize);
 	}	
 	
-	private void waitForAck() throws InterruptedException {
-		synchronized (lock) {
-			long now = System.currentTimeMillis();
-			
-			lock.wait(10000);
-			
-			if (System.currentTimeMillis() - now >= 10000) {
-				throw new RuntimeException("Timeout");
-			}
-			
-			if (messages.get(0).intValue() == OK) {
-//				System.out.println("Got ACK");
+	private void waitForAck(final int timeout) throws InterruptedException {
+		long now = System.currentTimeMillis();
+		// TODO send this timeout to arduino in prog start header
+		
+		lock.lock();
+		
+		try {
+			if (rxPacketCondition.await(timeout, TimeUnit.SECONDS)) {
+				int reply = messages.get(0).intValue();
+				
+				switch (reply) {
+				case OK:
+					break;
+				case START_OVER:
+					throw new RuntimeException("Upload failed: arduino received a program packet when it was not in prog mode.. start over");
+				case TIMEOUT:
+					throw new RuntimeException("Upload failed:: arduino had not received a packet for the n secs and timed=out.. start over");
+				default:
+					throw new RuntimeException("Unexpected response code from arduino: " + toHex(new int[] {reply}));						
+				}				
 			} else {
-				throw new RuntimeException("Sketch failed");
-			}
+				throw new RuntimeException("No reply from Arduino after " + timeout + " seconds");				
+			}				
+		} finally {
+			lock.unlock();
 		}
 	}
 	
-	public void process(String file, String device, int speed, String xbeeAddress, boolean verbose) throws IOException {
+	public void process(String file, String device, int speed, String xbeeAddress, boolean verbose, int timeout) throws IOException {
 		// page size is max packet size for the radio
 		Sketch sketch = parseSketchFromIntelHex(file, PAGE_SIZE);
 		
@@ -145,20 +156,23 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 			
 			xbee.addPacketListener(new PacketListener() {
 				@Override
-				public void processResponse(XBeeResponse response) {
-					//System.out.println("Received message from sketcher " + response);
-					
+				public void processResponse(XBeeResponse response) {					
 					if (response.getApiId() == ApiId.ZNET_RX_RESPONSE) {
+						System.out.println("Received message from arduino " + response);
+						
 						ZNetRxResponse zb = (ZNetRxResponse) response;
 						messages.clear();
 						
-						// TODO use magic packet. this is weak
-						if (zb.getData()[0] == OK || zb.getData()[0] == FAILURE) {
-							messages.add(zb.getData()[0]);
+						if (zb.getData()[0] == MAGIC_BYTE1 && zb.getData()[1] == MAGIC_BYTE2) {
+							lock.lock();
 							
-							synchronized (lock) {
-								lock.notify();
-							}							
+							try {
+								messages.add(zb.getData()[2]);
+								rxPacketCondition.signal();								
+							} finally {
+								lock.unlock();
+							}
+						
 						} else {
 							System.out.println("Ignoring non-programming packet " + zb);
 						}
@@ -185,7 +199,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				throw new RuntimeException("Failed to deliver programming start packet " + response);
 			}
 			
-			waitForAck();
+			waitForAck(timeout);
 			
 			for (Page page : sketch.getPages()) {
 				// send to radio, one page at a time
@@ -207,14 +221,12 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 //					System.out.print("#");					
 				} else {
 					// TODO handle retries
-					
-					
 					// that radio is powered on
 					throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", response " + response);
 				}
 				
 				// don't send next page until this one is processed or we will overflow the buffer
-				waitForAck();
+				waitForAck(timeout);
 			}
 
 			if (!verbose) {
@@ -228,12 +240,13 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				throw new RuntimeException("Flash start packet failed to deliver " + response);					
 			}
 			
-			waitForAck();
+			waitForAck(timeout);
 			
 			System.out.println("Successfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
 
 			xbee.close();
 		} catch (Exception e) {
+			// TODO log
 			e.printStackTrace();
 			try {
 				xbee.close();
@@ -256,6 +269,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		final String baudRate = "baud_rate";
 		final String xbeeAddress = "remote_xbee_address";
 		final String verboseArg = "verbose";
+		final String timeoutArg = "timeout";
 		
 		// add t option
 		options.addOption(sketch, true, "Path to compiled sketch (compiled by Arduino IDE)");
@@ -263,6 +277,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		options.addOption(baudRate, true, "Baud rate of host XBee baud rate configuration");
 		options.addOption(xbeeAddress, true, "Address (64-bit) of remote XBee radio (e.g. 0013A21240AB9856)");
 		options.addOption(verboseArg, false, "Make chatty");
+		options.addOption(timeoutArg, false, "No reply timeout");
 		
 		CommandLineParser parser = new PosixParser();
 		CommandLine cmd = parser.parse(options, args);
@@ -277,13 +292,25 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		
 		try {
 			baud = Integer.parseInt(cmd.getOptionValue(baudRate));
-		} catch (NumberFormatException e) {
+		} catch (Exception e) {
 			System.err.println("Baud rate is required and must be a positive integer");
 			return;
 		}
 		
+		int timeout = 10;
+
+		if (cmd.hasOption(timeoutArg)) {
+			try {
+				timeout = Integer.parseInt(cmd.getOptionValue(timeoutArg));
+			} catch (NumberFormatException e) {
+				System.err.println("Timeout must be a positive integer");
+				return;
+			}
+			// TODO validate size is within 1-255
+		}
+		
 		// cmd line
-		new XBeeSketchLoader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), baud, cmd.getOptionValue(xbeeAddress), verbose);
+		new XBeeSketchLoader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), baud, cmd.getOptionValue(xbeeAddress), verbose, timeout);
 	}
 	
 	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
@@ -293,7 +320,8 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 			runFromCmdLine(args);
 		} else {
 			// run from eclipse for dev
-			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true);			
+			//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
+			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
 		}
 	}
 }
