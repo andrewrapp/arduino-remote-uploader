@@ -335,8 +335,8 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 			runFromCmdLine(args);
 		} else {
 			// run from eclipse for dev
-			//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
-			new XBeeSketchLoader().process("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build4977709782306425433.tmp/Blink.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
+			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
+			//new XBeeSketchLoader().process("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build4977709782306425433.tmp/Blink.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
 		}
 	}
 }
