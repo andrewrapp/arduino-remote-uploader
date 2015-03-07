@@ -121,7 +121,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		long now = System.currentTimeMillis();
 		// TODO send this timeout to arduino in prog start header
 		
-		lock.lock();
+		lock.lockInterruptibly();
 		
 		try {
 			if (rxPacketCondition.await(timeout, TimeUnit.SECONDS)) {
@@ -133,7 +133,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				case START_OVER:
 					throw new RuntimeException("Upload failed: arduino received a program packet when it was not in prog mode.. start over");
 				case TIMEOUT:
-					throw new RuntimeException("Upload failed:: arduino had not received a packet for the n secs and timed=out.. start over");
+					throw new RuntimeException("Upload failed:: arduino had not received a packet for " + timeout + " secs and timed-out.. start over");
 				default:
 					throw new RuntimeException("Unexpected response code from arduino: " + toHex(new int[] {reply}));						
 				}				
@@ -164,7 +164,12 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 						messages.clear();
 						
 						if (zb.getData()[0] == MAGIC_BYTE1 && zb.getData()[1] == MAGIC_BYTE2) {
-							lock.lock();
+							try {
+								lock.lockInterruptibly();
+							} catch (InterruptedException e) {
+								// interrupted (kill signal)
+								return;
+							}
 							
 							try {
 								messages.add(zb.getData()[2]);
@@ -180,9 +185,10 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				}
 			});
 			
-			if (sketch.getSize() != sketch.getLastPage().getRealAddress16() + sketch.getLastPage().getData().length) {
-				throw new RuntimeException("boom");
-			}
+			// move to core
+//			if (sketch.getSize() != sketch.getLastPage().getRealAddress16() + sketch.getLastPage().getData().length) {
+//				throw new RuntimeException("boom");
+//			}
 			
 			XBeeAddress64 xBeeAddress64 = new XBeeAddress64(xbeeAddress);
 			
@@ -205,6 +211,11 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				// send to radio, one page at a time
 				// TODO handle errors and retries
 				// send address since so we know where to write this in the eeprom
+				
+				// make sure we exit on a kill signal like a good app
+				if (Thread.currentThread().isInterrupted()) {
+					throw new InterruptedException();
+				}
 				
 				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16()), page.getData());
 				
@@ -245,6 +256,10 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 			System.out.println("Successfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
 
 			xbee.close();
+		} catch (InterruptedException e) {
+			// kill signal
+			System.out.println("Interrupted during programming.. exiting");
+			return;
 		} catch (Exception e) {
 			// TODO log
 			e.printStackTrace();
@@ -321,7 +336,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		} else {
 			// run from eclipse for dev
 			//new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
-			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
+			new XBeeSketchLoader().process("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build4977709782306425433.tmp/Blink.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
 		}
 	}
 }

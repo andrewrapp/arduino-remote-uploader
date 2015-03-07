@@ -102,7 +102,7 @@ HardwareSerial* progammerSerial = &Serial1;
 // The remaining config should be fine for vast majority of cases
 
 // max time between xbee packets before timeout occurs and it kicks out of programming mode
-const long XBEE_TIMEOUT = 5000;
+const long PROG_TIMEOUT = 5000;
 
 // how long to wait for a reply from optiboot before timeout (ms)
 #define OPTIBOOT_READ_TIMEOUT 1000
@@ -112,6 +112,7 @@ const long XBEE_TIMEOUT = 5000;
 #define VERBOSE false
 // WARNING: never set this to true for a atmega328/168 as it needs Serial(0) for programming. If you do it will certainly fail on flash()
 // Only true for Leonardo (defaults to Serial(0) for debug) 
+// IMPORTANT: you must have the serial monitor open when usb debug enabled or will fail after a few packets!
 #define USBDEBUG true
 // UNTESTED!
 #define NSSDEBUG false
@@ -140,6 +141,7 @@ const int EEPROM_OFFSET_ADDRESS = 16;
 
 // TODO define negaive error codes for sketch only. translate to byte error code and send to XBee
 
+// we don't need magic bytes if we're not proxying but they are using only 5% of packet with nordic and much less with xbee
 // any packet that has byte1 and byte 2 that equals these is a programming packet
 #define MAGIC_BYTE1 0xef
 #define MAGIC_BYTE2 0xac
@@ -222,6 +224,7 @@ SoftwareSerial nss(xBeeSoftTxPin, xBeeSoftRxPin);
   SoftwareSerial nss_debug(NSSDEBUG_TX, NSSDEBUG_RX);
 #endif
 
+// TODO handle 512kb
 extEEPROM eeprom(kbits_256, 1, 64);
 
 HardwareSerial* getProgrammerSerial() {
@@ -715,45 +718,6 @@ void bounce() {
     digitalWrite(resetPin, HIGH);
     delay(300);
 }
-
-// TODO send version
-int sendReply(uint8_t status) {
-  xbeeTxPayload[0] = MAGIC_BYTE1;
-  xbeeTxPayload[1] = MAGIC_BYTE2;
-  xbeeTxPayload[2] = status;
-  
-  // TODO send with magic packet host can differentiate between relayed packets and programming ACKS
-  xbee.send(tx);
-  
-  // after send a tx request, we expect a status response
-  // wait up to half second for the status response
-  if (xbee.readPacket(1000)) {    
-    if (xbee.getResponse().getApiId() == ZB_TX_STATUS_RESPONSE) {
-      xbee.getResponse().getZBTxStatusResponse(txStatus);
-
-      // get the delivery status, the fifth byte
-      if (txStatus.isSuccess()) {
-        // good
-        return 0;
-      } else {
-        #if (USBDEBUG || NSSDEBUG) 
-          getDebugSerial()->println("TX fail");
-        #endif  
-      }
-    }      
-  } else if (xbee.getResponse().isError()) {
-    #if (USBDEBUG || NSSDEBUG)
-      getDebugSerial()->print("TX error:");  
-      getDebugSerial()->print(xbee.getResponse().getErrorCode());
-    #endif
-  } else {
-    #if (USBDEBUG || NSSDEBUG) 
-      getDebugSerial()->println("TX timeout");
-    #endif  
-  } 
-  
-  return -1;
-}
  
 // not specific to the transport
 // process packet and return reply code for host
@@ -892,6 +856,7 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
             return FLASH_ERROR;
           }
           
+          // TODO make this instead default baud rate or non-flash baud
           // resume xbee speed
           getProgrammerSerial()->begin(9600);
           
@@ -907,6 +872,7 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
           return START_OVER;
         }
         
+        // update so we know when to timeout
         last_packet = millis();
         return OK;
       } else {
@@ -916,6 +882,8 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
         }
       }
 }
+
+// Only the following functions are transport specific
 
 void setup() {  
   // leonardo wait for serial
@@ -957,7 +925,7 @@ void setup() {
 }
 
 void checkTimeout() {
-  if (in_prog && last_packet > 0 && (millis() - last_packet) > XBEE_TIMEOUT) {
+  if (in_prog && last_packet > 0 && (millis() - last_packet) > PROG_TIMEOUT) {
     // timeout
     #if (USBDEBUG || NSSDEBUG)
       getDebugSerial()->println("Prog timeout");
@@ -978,6 +946,45 @@ void handleProxy() {
       getXBeeSerial()->write(b); 
     }      
   }
+}
+
+// TODO send version
+int sendReply(uint8_t status) {
+  xbeeTxPayload[0] = MAGIC_BYTE1;
+  xbeeTxPayload[1] = MAGIC_BYTE2;
+  xbeeTxPayload[2] = status;
+  
+  // TODO send with magic packet host can differentiate between relayed packets and programming ACKS
+  xbee.send(tx);
+  
+  // after send a tx request, we expect a status response
+  // wait up to half second for the status response
+  if (xbee.readPacket(1000)) {    
+    if (xbee.getResponse().getApiId() == ZB_TX_STATUS_RESPONSE) {
+      xbee.getResponse().getZBTxStatusResponse(txStatus);
+
+      // get the delivery status, the fifth byte
+      if (txStatus.isSuccess()) {
+        // good
+        return 0;
+      } else {
+        #if (USBDEBUG || NSSDEBUG) 
+          getDebugSerial()->println("TX fail");
+        #endif  
+      }
+    }      
+  } else if (xbee.getResponse().isError()) {
+    #if (USBDEBUG || NSSDEBUG)
+      getDebugSerial()->print("TX error:");  
+      getDebugSerial()->print(xbee.getResponse().getErrorCode());
+    #endif
+  } else {
+    #if (USBDEBUG || NSSDEBUG) 
+      getDebugSerial()->println("TX timeout");
+    #endif  
+  } 
+  
+  return -1;
 }
 
 void loop() {  
@@ -1001,7 +1008,7 @@ void loop() {
       }
   } else if (xbee.getResponse().isError()) {
     #if (USBDEBUG || NSSDEBUG) 
-      getDebugSerial()->println("RX error: ");
+      getDebugSerial()->print("RX error: ");
       getDebugSerial()->println(xbee.getResponse().getErrorCode(), DEC);
     #endif  
   }  
