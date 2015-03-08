@@ -161,7 +161,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16(), page.getData().length), page.getData());
 				
 				if (verbose) {
-					System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", packet " + toHex(data));
+					System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ",  length " + data.length + ", packet " + toHex(data));
 //					System.out.println("Data " + toHex(page.getData()));
 				} else {
 					System.out.print(".");
@@ -176,7 +176,8 @@ public class NordicSketchLoader extends SerialSketchLoader {
 			if (!verbose) {
 				System.out.println("");
 			}
-			
+			//psize 44E (1102),cur addr 45E 1118.. off by 16
+
 			System.out.println("Sending flash start packet " + toHex(getFlashStartHeader(sketch.getSize())));
 			
 			writePacket(getFlashStartHeader(sketch.getSize()));
@@ -185,7 +186,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 			
 			System.out.println("Successfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
 
-//			xbee.close();
+			getSerialPort().close();
 		} catch (InterruptedException e) {
 			// kill signal
 			System.out.println("Interrupted during programming.. exiting");
@@ -203,7 +204,8 @@ public class NordicSketchLoader extends SerialSketchLoader {
 //			runFromCmdLine(args);
 //		} else {
 			// run from eclipse for dev
-			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+			//new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
 //		}
 	}
 }

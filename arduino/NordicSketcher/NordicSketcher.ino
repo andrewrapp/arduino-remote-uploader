@@ -114,7 +114,9 @@ void loop() {
       }
       
       if (isProgrammingPacket(packet, 32)) {
-        // send the packet array, length to be processed
+        dump_buffer(packet, 32, "Received packet");
+        
+        // TODO send actual packet length, not fixed
         int response = handlePacket(packet, 32);
         
         if (response != OK) {
@@ -129,7 +131,5 @@ void loop() {
         
         sendReply(response);          
       }
-          
-      dump_buffer(packet, 32, "Received packet");
     }
 }

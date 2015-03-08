@@ -198,6 +198,10 @@ public class SerialSketchLoader extends SketchLoaderCore implements SerialPortEv
 		serialPort.close();
 	}
 	
+	public SerialPort getSerialPort() {
+		return serialPort;
+	}
+
 	// of course you can't use the arduino serial monitor with this since it needs exclusive access to the usb-serial port
 	public static void main(String[] args) throws Exception {		
 		new SerialSketchLoader().process(args[0], args[1]);

@@ -745,7 +745,7 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
 //				packetLength + 6, //length + 6 bytes for header
 //				(address >> 8) & 0xff, 
 //				address & 0xff
-
+          int real_len = packet[3];
           int address = (packet[4] << 8) + packet[5]; 
           
           //getDebugSerial()->print("addr msb "); getDebugSerial()->print(rx.getData(3), DEC); getDebugSerial()->print(" addr lsb "); getDebugSerial()->println(rx.getData(4), DEC);
@@ -772,9 +772,14 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
           // TODO validate it's in range            
           current_eeprom_address = address + EEPROM_OFFSET_ADDRESS;
 
+//          #if (USBDEBUG || NSSDEBUG)
+//            getDebugSerial()->print("curaddr "); getDebugSerial()->println(current_eeprom_address, DEC); 
+//          #endif
+
           //dump_buffer(packet + 5, "packet", packet_length - 5);
             
-          uint8_t len = packet_length - PROG_DATA_OFFSET;
+          // FIXME must use length from packet, not the length passed to this function
+          uint8_t len = real_len - PROG_DATA_OFFSET;
             
           if (eeprom.write(current_eeprom_address, packet + PROG_DATA_OFFSET, len) != 0) {
             #if (USBDEBUG || NSSDEBUG) 
@@ -783,8 +788,13 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
             
             return EEPROM_WRITE_ERROR;
           }
-
+          
           current_eeprom_address+= len;
+
+//          #if (USBDEBUG || NSSDEBUG)
+//            getDebugSerial()->print("len is "); getDebugSerial()->println(len, DEC);
+//            getDebugSerial()->print("addr+len "); getDebugSerial()->println(current_eeprom_address, DEC); 
+//          #endif
           
           if (packet_count == num_packets) {
             // should be last packet but maybe not if we got retries 
@@ -805,7 +815,12 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
           #if (USBDEBUG || NSSDEBUG) 
             getDebugSerial()->println("");
           #endif  
-          
+
+        // debug remove
+        #if (USBDEBUG || NSSDEBUG) 
+          getDebugSerial()->println("Flash start packet");
+        #endif
+        
           // TODO verify that's what we've received            
           // NOTE redundant we have prog_size
           int psize = (packet[4] << 8) + packet[5];
