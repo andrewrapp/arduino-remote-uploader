@@ -8,7 +8,7 @@ void setup() {
   pinMode(led, OUTPUT);     
 }
 
-int wait = 1000;
+int wait = 50;
 
 void loop() {
   digitalWrite(led, HIGH);

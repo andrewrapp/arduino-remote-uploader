@@ -21,7 +21,6 @@ package com.rapplogic.sketcher.xbee;
 
 import java.io.IOException;
 import java.text.ParseException;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
@@ -60,23 +59,13 @@ import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse.DeliveryStatus;
 public class XBeeSketchLoader extends SketchLoaderCore {
 	
 	final List<Integer> messages = Lists.newArrayList();
-	
-	// block size for eeprom writes
-	final int PAGE_SIZE = 64;
-	final int MAGIC_BYTE1 = 0xef;
-	final int MAGIC_BYTE2 = 0xac;
-	// make enum
-	final int CONTROL_PROG_REQUEST = 0x10; 	//10000
-	final int CONTROL_WRITE_EEPROM = 0x20; 	//100000
-	// somewhat redundant
-	final int CONTROL_START_FLASH = 0x40; 	//1000000
-	
-	final int OK = 1;
-	final int START_OVER = 2;
-	final int TIMEOUT = 3;
-	
+		
 	// xbee just woke, send programming now!
 	//final int WAKE = 4;
+	
+	// block size for eeprom writes
+//	public final int XBEE_PAGE_SIZE = 64;
+	public final int XBEE_PAGE_SIZE = 60;
 	
 	final ReentrantLock lock = new ReentrantLock();
 	final Condition rxPacketCondition = lock.newCondition();
@@ -84,38 +73,6 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 	public XBeeSketchLoader() {
 		super();
 	}
-	
-	private int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage) {
-		return new int[] { 
-				MAGIC_BYTE1, 
-				MAGIC_BYTE2, 
-				CONTROL_PROG_REQUEST, 
-				(sizeInBytes >> 8) & 0xff, 
-				sizeInBytes & 0xff, 
-				(numPages >> 8) & 0xff, 
-				numPages & 0xff,
-				bytesPerPage
-		};
-	}
-	
-	// xbee has error detection built-in but other protocols may need a checksum
-	private int[] getHeader(int controlByte, int sixteenBitValue) {
-		return new int[] {
-				MAGIC_BYTE1, 
-				MAGIC_BYTE2, 
-				controlByte, 
-				(sixteenBitValue >> 8) & 0xff, 
-				sixteenBitValue & 0xff
-		};
-	}
-
-	private int[] getEEPROMWriteHeader(int address16) {
-		return getHeader(CONTROL_WRITE_EEPROM, address16);
-	}
-	
-	private int[] getFlashStartHeader(int progSize) {
-		return getHeader(CONTROL_START_FLASH, progSize);
-	}	
 	
 	private void waitForAck(final int timeout) throws InterruptedException {
 		long now = System.currentTimeMillis();
@@ -145,9 +102,9 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 		}
 	}
 	
-	public void process(String file, String device, int speed, String xbeeAddress, boolean verbose, int timeout) throws IOException {
+	public void process(String file, String device, int speed, String xbeeAddress, final boolean verbose, int timeout) throws IOException {
 		// page size is max packet size for the radio
-		Sketch sketch = parseSketchFromIntelHex(file, PAGE_SIZE);
+		Sketch sketch = parseSketchFromIntelHex(file, XBEE_PAGE_SIZE);
 		
 		XBee xbee = new XBee();
 		
@@ -158,8 +115,11 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				@Override
 				public void processResponse(XBeeResponse response) {					
 					if (response.getApiId() == ApiId.ZNET_RX_RESPONSE) {
-						System.out.println("Received message from arduino " + response);
 						
+						if (verbose) {
+							System.out.println("Received message from arduino " + response);							
+						}
+
 						ZNetRxResponse zb = (ZNetRxResponse) response;
 						messages.clear();
 						
@@ -184,11 +144,6 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 					}
 				}
 			});
-			
-			// move to core
-//			if (sketch.getSize() != sketch.getLastPage().getRealAddress16() + sketch.getLastPage().getData().length) {
-//				throw new RuntimeException("boom");
-//			}
 			
 			XBeeAddress64 xBeeAddress64 = new XBeeAddress64(xbeeAddress);
 			
@@ -217,7 +172,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 					throw new InterruptedException();
 				}
 				
-				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16()), page.getData());
+				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16(), page.getData().length), page.getData());
 				
 				if (verbose) {
 					System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", packet " + toHex(data));
@@ -267,12 +222,6 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 				xbee.close();
 			} catch (Exception e2) {}
 		}
-	}
-	
-	private int[] combine(int[] a, int[] b) {
-		int[] result = Arrays.copyOf(a, a.length + b.length);
-		System.arraycopy(b, 0, result, a.length, b.length);
-		return result;
 	}
 
 	private static void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException {
@@ -335,8 +284,8 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 			runFromCmdLine(args);
 		} else {
 			// run from eclipse for dev
-			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/XBeeEcho.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
-			//new XBeeSketchLoader().process("/var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build4977709782306425433.tmp/Blink.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5);
+//			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkFast.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
+			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkSlow.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
 		}
 	}
 }

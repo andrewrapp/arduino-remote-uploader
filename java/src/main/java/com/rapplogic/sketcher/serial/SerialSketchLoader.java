@@ -35,8 +35,8 @@ public class SerialSketchLoader extends SketchLoaderCore implements SerialPortEv
 	
 	private InputStream inputStream;
 	private SerialPort serialPort;
-    private StringBuffer strBuf = new StringBuffer();
     private Object pageAck = new Object();
+    private StringBuffer strBuf = new StringBuffer();
     
 	public SerialSketchLoader() {
 		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
@@ -139,8 +139,14 @@ public class SerialSketchLoader extends SketchLoaderCore implements SerialPortEv
            }
 	}
 	
+	public InputStream getInputStream() {
+		return inputStream;
+	}
+
 	public void write(int i) throws IOException {
 		serialPort.getOutputStream().write(i);
+		// must flush after each write or usb-serial chokes randomly > 90 or so bytes
+		serialPort.getOutputStream().flush();		
 	}
 	
 	public void process(String device, String hex) throws Exception {
@@ -170,8 +176,6 @@ public class SerialSketchLoader extends SketchLoaderCore implements SerialPortEv
 			
 			for (int k = 0; k < page.getPage().length; k++) {
 				write(page.getPage()[k] & 0xff);
-				// must flush after each write or usb-serial chokes randomly > 90 or so bytes
-				serialPort.getOutputStream().flush();
 			}
 			
 			serialPort.getOutputStream().flush();

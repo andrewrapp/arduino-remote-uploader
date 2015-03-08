@@ -122,9 +122,6 @@ const long PROG_TIMEOUT = 5000;
 // NOTE: ONLY SET THIS TRUE FOR TROUBLESHOOTING. FLASHING IS NOT POSSIBLE IF SET TO TRUE
 #define USE_SERIAL_FOR_DEBUG false
 
-// these can be swapped to any other free digital pins
-const int xBeeSoftTxPin = 11;
-const int xBeeSoftRxPin = 10;
 const int resetPin = 9;
 
 // this can be reduced to the maximum packet size + header bytes
@@ -157,7 +154,7 @@ const int EEPROM_OFFSET_ADDRESS = 16;
 #define VERSION = 1;
 
 // position where header ends and prog data starts
-#define PROG_DATA_OFFSET 5
+#define PROG_DATA_OFFSET 6
 
 // host reply codes
 // every packet must return exactly one reply: OK or ERROR. is anything > OK
@@ -192,8 +189,6 @@ const int EEPROM_OFFSET_ADDRESS = 16;
 
 // =========================================================================
 
-uint8_t xbeeTxPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0 };
-
 uint8_t cmd_buffer[1];
 uint8_t addr[2];
 uint8_t buffer[BUFFER_SIZE];
@@ -207,10 +202,6 @@ long prog_start = 0;
 long last_packet = 0;
 int current_eeprom_address = EEPROM_OFFSET_ADDRESS;
 
-//Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
-// Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
-SoftwareSerial nss(xBeeSoftTxPin, xBeeSoftRxPin);
-
 #if (NSSDEBUG) 
   SoftwareSerial nss_debug(NSSDEBUG_TX, NSSDEBUG_RX);
 #endif
@@ -220,10 +211,6 @@ extEEPROM eeprom(kbits_256, 1, 64);
 
 HardwareSerial* getProgrammerSerial() {
   return progammerSerial;
-}
-
-Stream* getXBeeSerial() {
-  return &nss;  
 }
 
 // can only use USBDEBUG with Leonardo or other variant that supports multiple serial ports
@@ -701,8 +688,6 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
     // on final packet do any verification to see if it boots
 
 //    #if (USBDEBUG || NSSDEBUG) 
-//      getDebugSerial()->print("plen is ");
-//      getDebugSerial()->print(packet_length);
 //      dump_buffer(packet, "packet", packet_length);
 //    #endif
         
@@ -733,24 +718,35 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
           prog_start = millis();
           in_prog = true; 
           packet_count = 0;
-          
-          // size in bytes
-          prog_size = (packet[3] << 8) + packet[4];
-          // num packets to be sent   
-          num_packets = packet[5] << 8 + packet[6];   
+
+//				MAGIC_BYTE1, 
+//				MAGIC_BYTE2, 
+//				CONTROL_PROG_REQUEST, 
+//				9, // xbee has length built-in but some may not (nordic w/o dynamic payload)
+//				(sizeInBytes >> 8) & 0xff, 
+//				sizeInBytes & 0xff, 
+//				(numPages >> 8) & 0xff, 
+//				numPages & 0xff,
+//				bytesPerPage
+          //packet[3] // ignore: length xbee has built-in          
+          // program size
+          prog_size = (packet[4] << 8) + packet[5];
+          // num packets to expect
+          num_packets = packet[6] << 8 + packet[7];   
         } else if (packet[2] == CONTROL_PROG_DATA && in_prog) {
           packet_count++;
           
           // data starts at 16 (12 bytes xbee header + data header
           //dump_buffer(xbee.getResponse().getFrameData() + 16, "packet", xbee.getResponse().getFrameDataLength() - 16);
           // header
-//        MAGIC_BYTE1, 
-//        MAGIC_BYTE2, 
-//        CONTROL_PROG_DATA, 
-//        (address16 >> 8) & 0xff, 
-//        address16 & 0xff
+//				MAGIC_BYTE1, 
+//				MAGIC_BYTE2, 
+//				CONTROL_PROG_DATA, 
+//				packetLength + 6, //length + 6 bytes for header
+//				(address >> 8) & 0xff, 
+//				address & 0xff
 
-          int address = (packet[3] << 8) + packet[4]; 
+          int address = (packet[4] << 8) + packet[5]; 
           
           //getDebugSerial()->print("addr msb "); getDebugSerial()->print(rx.getData(3), DEC); getDebugSerial()->print(" addr lsb "); getDebugSerial()->println(rx.getData(4), DEC);
           //getDebugSerial()->print("curaddr msb "); getDebugSerial()->print(((current_eeprom_address - EEPROM_OFFSET_ADDRESS) >> 8) & 0xff, DEC); getDebugSerial()->print(" addr lsb "); getDebugSerial()->println((current_eeprom_address - EEPROM_OFFSET_ADDRESS) & 0xff, DEC);
@@ -799,13 +795,20 @@ int handlePacket(uint8_t packet[], uint8_t packet_length) {
         } else if (isFlashPacket(packet) && in_prog) {
           // done verify we got expected # packets
 
+//				MAGIC_BYTE1, 
+//				MAGIC_BYTE2, 
+//				CONTROL_START_FLASH, 
+//				packetLength + 6, //length + 6 bytes for header
+//				(progSize >> 8) & 0xff, 
+//				progSize & 0xff
+
           #if (USBDEBUG || NSSDEBUG) 
             getDebugSerial()->println("");
           #endif  
           
           // TODO verify that's what we've received            
           // NOTE redundant we have prog_size
-          int psize = (packet[3] << 8) + packet[4];
+          int psize = (packet[4] << 8) + packet[5];
                     
           if (psize != current_eeprom_address - EEPROM_OFFSET_ADDRESS) {
             return START_OVER;             
@@ -875,5 +878,7 @@ int setup_core() {
     
     return EEPROM_ERROR;
   } 
+  
+  return 0;
 }
 

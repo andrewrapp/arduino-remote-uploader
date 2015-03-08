@@ -17,6 +17,8 @@
  * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
  */
  
+// TODO support XBee series1
+
 #include "eeprom_flasher.h"
 
 #include <XBee.h>
@@ -34,18 +36,43 @@ XBee xbee = XBee();
 XBeeResponse response = XBeeResponse();
 ZBRxResponse rx = ZBRxResponse();
 
+uint8_t xbeeTxPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0 };
+
 // Coordinator/XMPP Gateway
 XBeeAddress64 addr64 = XBeeAddress64(COORD_MSB_ADDRESS, COORD_LSB_ADDRESS);
 ZBTxRequest tx = ZBTxRequest(addr64, xbeeTxPayload, sizeof(xbeeTxPayload));
 ZBTxStatusResponse txStatus = ZBTxStatusResponse();
+
+// these can be swapped to any other free digital pins
+const int xBeeSoftTxPin = 11;
+const int xBeeSoftRxPin = 10;
+
+//Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
+// Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
+SoftwareSerial nss(xBeeSoftTxPin, xBeeSoftRxPin);
+
+Stream* getXBeeSerial() {
+  return &nss;  
+}
 
 void setup() {
   int setup_success = setup_core();
 
   // TODO if setup_success != OK send error programming attempt
   // we only have one Serial port (UART) so need nss for XBee
+  
   nss.begin(XBEE_BAUD_RATE);  
   xbee.setSerial(nss);
+  
+  if (PROXY_SERIAL) {
+    getProgrammerSerial()->begin(XBEE_BAUD_RATE);    
+  }
+  
+    #if (USBDEBUG || NSSDEBUG) 
+      if (setup_success == 0) {
+        getDebugSerial()->println("Ready");
+      }
+    #endif   
 }
 
 void checkTimeout() {
@@ -61,6 +88,7 @@ void checkTimeout() {
   }
 }
 
+// TODO move to library.. tell library of the proxySerial port
 void handleProxy() {
   // don't need to test in_prog. if in prog we are just collecting packets so can keep relaying. when flashing, it's blocking so will never get here
   // forward packets from target out the radio
@@ -99,6 +127,7 @@ int sendReply(uint8_t status) {
     }      
   } else if (xbee.getResponse().isError()) {
     #if (USBDEBUG || NSSDEBUG)
+      // starting to see lots of these. check wire connections are secure
       getDebugSerial()->print("TX error:");  
       getDebugSerial()->print(xbee.getResponse().getErrorCode());
     #endif
@@ -171,9 +200,7 @@ void loop() {
           
           if (isFlashPacket(packet)) {
             if (PROXY_SERIAL) {
-              // we flashed to reset baud rate for proxying
-              // TODO make this instead default baud rate or non-flash baud
-              // resume xbee speed
+              // we flashed so reset to xbee baud rate for proxying
               getProgrammerSerial()->begin(XBEE_BAUD_RATE);              
             }
           }
