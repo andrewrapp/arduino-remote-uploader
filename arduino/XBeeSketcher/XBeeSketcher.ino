@@ -27,6 +27,9 @@
 #include <Wire.h>
 
 #define XBEE_BAUD_RATE 9600
+// these can be swapped to any other free digital pins
+#define xBeeSoftTxPin 11
+#define xBeeSoftRxPin 10
 
 // Specify the XBee coordinator address to send ACKs
 const uint32_t COORD_MSB_ADDRESS = 0x0013a200;
@@ -42,10 +45,6 @@ uint8_t xbeeTxPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0 };
 XBeeAddress64 addr64 = XBeeAddress64(COORD_MSB_ADDRESS, COORD_LSB_ADDRESS);
 ZBTxRequest tx = ZBTxRequest(addr64, xbeeTxPayload, sizeof(xbeeTxPayload));
 ZBTxStatusResponse txStatus = ZBTxStatusResponse();
-
-// these can be swapped to any other free digital pins
-const int xBeeSoftTxPin = 11;
-const int xBeeSoftRxPin = 10;
 
 //Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
