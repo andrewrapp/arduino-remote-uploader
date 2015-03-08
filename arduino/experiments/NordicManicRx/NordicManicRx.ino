@@ -8,9 +8,10 @@
 //         Using Programmer              : arduino
 //         Overriding Baud Rate          : 115200
          
-// Set up nRF24L01 radio on SPI bus plus pins 9 & 10
-// Leonardo must be on 8,10
-RF24 radio(9,10);
+#define NORDIC_CE 10
+#define NORDIC_CS 11
+
+RF24 radio(NORDIC_CE, NORDIC_CS);
 
 // Radio pipe addresses for the 2 nodes to communicate.
 //const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };

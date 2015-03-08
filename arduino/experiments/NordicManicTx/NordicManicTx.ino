@@ -62,7 +62,10 @@ TODO
 */
 
 
-RF24 radio(9,10);
+#define NORDIC_CE 10
+#define NORDIC_CS 11
+
+RF24 radio(NORDIC_CE, NORDIC_CS);
 
 // Radio pipe addresses for the 2 nodes to communicate.
 // 
