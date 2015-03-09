@@ -1,18 +1,34 @@
+/**
+ * Copyright (c) 2015 Andrew Rapp. All rights reserved.
+ *
+ * This file is part of arduino-sketcher
+ *
+ * arduino-sketcher is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * arduino-sketcher is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include "eeprom_flasher.h"
 
 #include <extEEPROM.h>
 // eeprom requires i2c
 #include <Wire.h>
-
 #include <SPI.h>
 #include "nRF24L01.h"
 #include "RF24.h"
-#include "printf.h"
 
 #define NORDIC_CE 10
 #define NORDIC_CS 11
-
-// NOTE: can't use printDetails with Arduino Pro, of course the serial port is needed by the programmer
+#define NORDIC_PACKET_SIZE 32
 
 // NOTE: Diecimila/Arduino Pros (w/o CTS) don't auto reset, so need press reset button as soon as this appears in console output:
 //         Using Port                    : /dev/tty.usbserial-A4001tRI
@@ -30,37 +46,12 @@ uint8_t replyPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0 };
 uint64_t baseAddress = 0xca05cade05LL;
 const uint64_t pipes[2] = { baseAddress, baseAddress + 1 };
 
-uint8_t packet[32];
-
-void dump_buffer(uint8_t arr[], uint8_t len, char context[]) {
-    Serial.print(context);
-    Serial.print(": ");
-  
-    for (int i = 0; i < len; i++) {
-      Serial.print(arr[i], HEX);
-    
-      if (i < len -1) {
-        Serial.print(",");
-      }
-    }
-  
-    Serial.println("");
-    Serial.flush();
-}
+uint8_t packet[NORDIC_PACKET_SIZE];
 
 void setup() {
   int setup_success = setup_core();
   
-  // TODO handle setup_success != OK
-//  Serial.begin(57600);
-  
-  delay(4000);
-  // can only use printf with Leonardo
-  //printf_begin();
-  //Serial.println("Start RX");  
-
   radio.begin();
-
   radio.setChannel(0x8);
   radio.setDataRate(RF24_250KBPS);
   // optionally, increase the delay between retries & # of retries
@@ -68,11 +59,12 @@ void setup() {
   radio.openWritingPipe(pipes[1]);
   radio.openReadingPipe(1,pipes[0]);
   radio.startListening();
-  //radio.printDetails();
 }
 
 uint8_t pipe = 1;
 
+// send reply to host
+// 0 if success, < 0 failure
 int sendReply(uint8_t status) {
   
   radio.stopListening();
@@ -99,10 +91,6 @@ int sendReply(uint8_t status) {
   return success;
 }
 
-//uint8_t getPacketLength(packet[]) {
-//  
-//}
-
 void loop() {
     // check if there is data ready from pipe 1. if we had multiple pipe we'd want to check each for data
     if (radio.available(&pipe)) {
@@ -110,14 +98,15 @@ void loop() {
       
       // TODO timeout
       while (!done) {
-        done = radio.read(packet, 32);
+        done = radio.read(packet, NORDIC_PACKET_SIZE);
       }
       
       if (isProgrammingPacket(packet, 32)) {
-        dump_buffer(packet, 32, "Received packet");
+        #if (USBDEBUG || NSSDEBUG)        
+          //dump_buffer(packet, "Received packet", NORDIC_PACKET_SIZE);
+        #endif         
         
-        // TODO send actual packet length, not fixed
-        int response = handlePacket(packet, 32);
+        int response = handlePacket(packet);
         
         if (response != OK) {
           prog_reset();
@@ -125,7 +114,7 @@ void loop() {
         
         if (isFlashPacket(packet)) {
           if (PROXY_SERIAL) {
-            // not implemented
+            // revert serial speed if we are proxying
           }
         }
         

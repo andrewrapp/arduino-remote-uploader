@@ -31,10 +31,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.PosixParser;
+import org.apache.log4j.Logger;
 
 import com.google.common.collect.Lists;
 import com.rapplogic.sketcher.Page;
@@ -49,7 +46,8 @@ import com.rapplogic.xbee.api.XBeeException;
  */
 public class NordicSketchLoader extends SerialSketchLoader {
 	
-	final List<Integer> messages = Lists.newArrayList();
+	final Logger log = Logger.getLogger(NordicSketchLoader.class);
+	
 	final ReentrantLock lock = new ReentrantLock();
 	final Condition replyCondition = lock.newCondition();
 	
@@ -64,28 +62,27 @@ public class NordicSketchLoader extends SerialSketchLoader {
 	protected void handleSerial(SerialPortEvent event) {
        switch (event.getEventType()) {
            case SerialPortEvent.DATA_AVAILABLE:
-               // we get here if data has been received
-               byte[] readBuffer = new byte[20];
+               byte[] readBuffer = new byte[32];
                
                try {
-                   // read data
             	   int numBytes = getInputStream().read(readBuffer);
             	   
             	   for (int i = 0; i < numBytes; i++) {
             		   //System.out.println("read " + (char) readBuffer[i]);
  
+            		   // don't add lf/cr chars
             		   if ((readBuffer[i] != 10 && readBuffer[i] != 13)) {
             			   stringBuilder.append((char) readBuffer[i]);                            
             		   }
 
-            		   // line
+            		   // got a new line
             		   if ((int)readBuffer[i] == 10) {    
             			   handleSerialReply(stringBuilder.toString());
             			   stringBuilder = new StringBuilder();
             		   }
             	   }
                } catch (Exception e) {
-                   throw new RuntimeException("serialEvent error ", e);
+            	   log.error("Serial error", e);
                }
 
                break;
@@ -96,7 +93,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 		lock.lockInterruptibly();
 		
 		try {
-			System.out.println("Arduino<-" + reply);
+			System.out.println("<-" + reply);
 			this.reply = reply;
 			replyCondition.signal();
 		} finally {
@@ -106,10 +103,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 	
 	String reply = null;
 	
-	private void waitForAck(final int timeout) throws InterruptedException {
-		long now = System.currentTimeMillis();
-		// TODO send this timeout to arduino in prog start header
-		
+	private void waitForAck(final int timeout) throws InterruptedException {	
 		lock.lockInterruptibly();
 		
 		try {
@@ -146,7 +140,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 			
 			long start = System.currentTimeMillis();
 			
-			System.out.println("Sending sketch to nordic radio, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet");			
+			System.out.println("Sending sketch to nordic radio via Serial2SPI sketch, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet");			
 
 			writePacket(getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage()));
 			
@@ -176,7 +170,6 @@ public class NordicSketchLoader extends SerialSketchLoader {
 			if (!verbose) {
 				System.out.println("");
 			}
-			//psize 44E (1102),cur addr 45E 1118.. off by 16
 
 			System.out.println("Sending flash start packet " + toHex(getFlashStartHeader(sketch.getSize())));
 			
@@ -185,15 +178,16 @@ public class NordicSketchLoader extends SerialSketchLoader {
 			waitForAck(timeout);
 			
 			System.out.println("Successfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
-
-			getSerialPort().close();
 		} catch (InterruptedException e) {
 			// kill signal
 			System.out.println("Interrupted during programming.. exiting");
 			return;
 		} catch (Exception e) {
-			// TODO log
-			e.printStackTrace();
+			log.error("Unexpected error", e);
+		} finally {
+			try {
+				getSerialPort().close();
+			} catch (Exception e) {}
 		}
 	}
 	
@@ -204,8 +198,8 @@ public class NordicSketchLoader extends SerialSketchLoader {
 //			runFromCmdLine(args);
 //		} else {
 			// run from eclipse for dev
-			//new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
-			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+			//new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
 //		}
 	}
 }

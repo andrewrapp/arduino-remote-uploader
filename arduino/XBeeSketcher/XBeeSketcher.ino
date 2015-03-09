@@ -191,7 +191,7 @@ void loop() {
         
         if (rx.getDataLength() > 4 && isProgrammingPacket(packet, rx.getDataLength())) {
           // send the packet array, length to be processed
-          int response = handlePacket(packet, rx.getDataLength());
+          int response = handlePacket(packet);
           
           if (response != OK) {
             prog_reset();

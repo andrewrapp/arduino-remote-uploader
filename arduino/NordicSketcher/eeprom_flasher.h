@@ -680,7 +680,7 @@ bool isFlashPacket(uint8_t packet[]) {
 
 // not specific to the transport
 // process packet and return reply code for host
-int handlePacket(uint8_t packet[], uint8_t packet_length) {
+int handlePacket(uint8_t packet[]) {
     // if programming start magic packet is received:
     // reset the target arduino.. determine the neecessary delay
     // send data portion of packets to serial.. but look for magic word on packet so we know it's programming data
