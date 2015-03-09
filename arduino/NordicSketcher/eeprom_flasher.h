@@ -151,10 +151,11 @@ const int EEPROM_OFFSET_ADDRESS = 16;
 #define CONTROL_PROG_DATA 0x20
 #define CONTROL_FLASH_START 0x40
 
-#define VERSION = 1;
+#define PROG_START_HEADER_SIZE 9
+#define PROG_DATA_HEADER_SIZE 6
+#define FLASH_START_HEADER_SIZE 6
 
-// position where header ends and prog data starts
-#define PROG_DATA_OFFSET 6
+#define VERSION = 1;
 
 // host reply codes
 // every packet must return exactly one reply: OK or ERROR. is anything > OK
@@ -705,11 +706,10 @@ int handlePacket(uint8_t packet[]) {
           #endif  
           
           if (in_prog) {
+            // TODO print warning: already in prog. reset and continue
             #if (USBDEBUG || NSSDEBUG) 
               getDebugSerial()->println("Error: in prog");
-            #endif              
-            
-            return START_OVER;
+            #endif
           }
 
           // reset state
@@ -722,13 +722,12 @@ int handlePacket(uint8_t packet[]) {
 //				MAGIC_BYTE1, 
 //				MAGIC_BYTE2, 
 //				CONTROL_PROG_REQUEST, 
-//				9, // xbee has length built-in but some may not (nordic w/o dynamic payload)
+//				9, // length, including header
 //				(sizeInBytes >> 8) & 0xff, 
 //				sizeInBytes & 0xff, 
 //				(numPages >> 8) & 0xff, 
 //				numPages & 0xff,
-//				bytesPerPage
-          //packet[3] // ignore: length xbee has built-in          
+//				bytesPerPage      
           // program size
           prog_size = (packet[4] << 8) + packet[5];
           // num packets to expect
@@ -745,7 +744,7 @@ int handlePacket(uint8_t packet[]) {
 //				packetLength + 6, //length + 6 bytes for header
 //				(address >> 8) & 0xff, 
 //				address & 0xff
-          int real_len = packet[3];
+          int packet_len = packet[3];
           int address = (packet[4] << 8) + packet[5]; 
           
           //getDebugSerial()->print("addr msb "); getDebugSerial()->print(rx.getData(3), DEC); getDebugSerial()->print(" addr lsb "); getDebugSerial()->println(rx.getData(4), DEC);
@@ -778,10 +777,9 @@ int handlePacket(uint8_t packet[]) {
 
           //dump_buffer(packet + 5, "packet", packet_length - 5);
             
-          // FIXME must use length from packet, not the length passed to this function
-          uint8_t len = real_len - PROG_DATA_OFFSET;
+          uint8_t data_len = packet_len - PROG_DATA_HEADER_SIZE;
             
-          if (eeprom.write(current_eeprom_address, packet + PROG_DATA_OFFSET, len) != 0) {
+          if (eeprom.write(current_eeprom_address, packet + PROG_DATA_HEADER_SIZE, data_len) != 0) {
             #if (USBDEBUG || NSSDEBUG) 
               getDebugSerial()->println("EEPROM write failure");
             #endif  
@@ -789,7 +787,7 @@ int handlePacket(uint8_t packet[]) {
             return EEPROM_WRITE_ERROR;
           }
           
-          current_eeprom_address+= len;
+          current_eeprom_address+= data_len;
 
 //          #if (USBDEBUG || NSSDEBUG)
 //            getDebugSerial()->print("len is "); getDebugSerial()->println(len, DEC);

@@ -247,6 +247,8 @@ public class SketchLoaderCore {
 		};
 	}
 	
+	// TODO consider adding retry bit to header
+	
 	// NOTE if header size is ever changed must also change PROG_DATA_OFFSET in library
 	// xbee has error detection built-in but other protocols may need a checksum
 	private int[] getHeader(int controlByte, int addressOrSize, int dataLength) {

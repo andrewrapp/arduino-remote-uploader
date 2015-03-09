@@ -155,7 +155,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16(), page.getData().length), page.getData());
 				
 				if (verbose) {
-					System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ",  length " + data.length + ", packet " + toHex(data));
+					System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
 //					System.out.println("Data " + toHex(page.getData()));
 				} else {
 					System.out.print(".");
