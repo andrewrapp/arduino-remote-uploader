@@ -209,13 +209,14 @@ void loop() {
             Serial.println("Retrying...");
             delay(100);
           } else if (response == START_OVER) {
-            Serial.println("ERROR: Start over");
+            Serial.println("Start over");
             break;
           } else if (response == TIMEOUT) {
-            Serial.println("ERROR: Timeout");
+            Serial.println("Timeout");
             break;
           } else {
-            Serial.print("ERROR: Unexpected response"); Serial.println(response, DEC);
+            // what is this?? <-Unexpected response -24320
+            Serial.print("Unexpected response: "); Serial.println(response, DEC);
             break; 
           }
         }  
