@@ -31,10 +31,11 @@
 
 #define TX_LOOP_RETRIES 10
 
-#define TX_FAILURE -1
-#define ACK_FAILURE -2
-#define START_OVER -3
-#define TIMEOUT -4
+#define SUCCESS 0
+#define TX_FAILURE 1
+#define ACK_FAILURE 2
+#define START_OVER 3
+#define TIMEOUT 4
 
 #define ACK_TIMEOUT 3000
 #define SERIAL_TIMEOUT 5000
@@ -98,60 +99,54 @@ uint8_t length = 0;
 bool parsing = false;
 
 int send_packet() {
+  int success = SUCCESS;
+  
   radio.stopListening();
-            
-  int success = 0;
 
   //dump_buffer(data, 32, "Sending packet to nordic");        
         
-    if (!radio.write(data, 32)) {
-      success = TX_FAILURE;         
-    } else {
-      // wait for ACK
-      radio.startListening();      
+  if (!radio.write(data, 32)) {
+    success = TX_FAILURE;         
+  } else {
+    // wait for ACK
+    radio.startListening();      
       
-      long start = millis();
+    long start = millis();
       
-      // wait for ACK
-      bool timeout = false;
-      
-      while (!radio.available()) {
-        if (millis() - start > ACK_TIMEOUT) {
-          timeout = true;
-          return ACK_FAILURE;
-        }
+    // wait for ACK
+    bool timeout = false;
+
+    // Unfortunately once radio.available() returns true, it resets back to false, so I need a timeout variable      
+    while (!radio.available()) {
+      if (millis() - start > ACK_TIMEOUT) {
+        timeout = true;
+        return ACK_FAILURE;
       }
-      
-      // Unfortunately once radio.available() returns true, it resets back to false, so I need a timeout variable
-      bool done = false;
-        
-      while (!done) {
-        done = radio.read(ack, 32);
-        
-        // TODO import codes from header
-        if (ack[2] == 1) {
-          // ok!
-        } else if (ack[2] == 2) {
-          success = START_OVER;
-        } else if (ack[2] == 3) {     
-          success = TIMEOUT;
-        }
-        
-        //dump_buffer(ack, 32, "ACK");
-        //Serial.println(ack[2], HEX);
-      } 
-      
-      // wait for radio to swtich modes
-      delay(20); 
-              
-      radio.startListening();   
-      
-      return success;
     }
-}
-
-void resetPacket() {
-
+      
+    while (!radio.read(ack, 32)) {
+      
+    } 
+    
+    // TODO import codes from header
+    if (ack[2] == 1) {
+      // ok!
+    } else if (ack[2] == 2) {
+      success = START_OVER;
+    } else if (ack[2] == 3) {     
+      success = TIMEOUT;
+    }
+        
+    //dump_buffer(ack, 32, "ACK");
+    //Serial.println(ack[2], HEX);    
+      
+    // wait for radio to swtich modes
+    delay(20); 
+              
+    radio.startListening();   
+      
+    return success;
+  }
 }
 
 void reset() {
@@ -201,7 +196,7 @@ void loop() {
         for (int i = 0; i < TX_LOOP_RETRIES; i++) {
           int response = send_packet();
 
-          if (response == 0) {
+          if (response == SUCCESS) {
             sent = true;
             break; 
           } else if (response == TX_FAILURE || response == ACK_FAILURE) {
