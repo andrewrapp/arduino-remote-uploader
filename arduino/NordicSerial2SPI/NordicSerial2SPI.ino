@@ -17,10 +17,14 @@
  * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
  */
  
+ /**
+ * Macs and most PCs don't have SPI so I'm using an Arduino with this sketch to communicate with the Nordic radio.
+ * On a raspberrypi it should be possible to communicate directly with a nordic as it has SPI
+ */
+ 
 #include <SPI.h>
 #include "nRF24L01.h"
 #include "RF24.h"
-#include "printf.h"
 
 #define MAGIC_BYTE1 0xef
 #define MAGIC_BYTE2 0xac

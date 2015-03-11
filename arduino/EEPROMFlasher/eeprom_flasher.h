@@ -24,10 +24,7 @@
 #include <stdint.h>
 #include "HardwareSerial.h"
 
-// finally success 2/15/15 11:38AM: Flash in 2174ms!
-
 // Leonardo (usb-serial) is required for USBDEBUG. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true and it fails in unexpected ways! :(
-
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
 
 // WIRING:
@@ -73,8 +70,6 @@ TROUBLESHOOTING
 - check every pin connection, reset, xbee tx/rx (remember arduino tx goes to xbee rx), eeprom, power. make sure all powered devices share a com
 - connection issues: check your solder joints. try different breadboard positions, try different breadboard, try different Arduinos
 
-
-
 Ready!
 *Received start packet
 ********************************************************
@@ -85,21 +80,14 @@ Flashed in 1571ms
 */
 // ================================================================== START CONFIG ==================================================================
 
-
-
-// ** IMPORTANT! **
-// For Leonardo use Serial1 (UART) or it will try to program through usb-serial
-// For atmega328 use Serial
-// For megas other e.g. Serial2 should work -- UNTESTED!
-HardwareSerial* progammerSerial = &Serial1;
-
-// should we proxy serial rx/tx to softserial (xbee). if you want to use the XBee from the application arduino set to true -- if only using xbee for programming set to false
-#define PROXY_SERIAL true
+// TODO make this a C++ Arduino style library
 
 // The remaining config should be fine for vast majority of cases
-
-// max time between xbee packets before timeout occurs and it kicks out of programming mode
-const long PROG_TIMEOUT = 5000;
+// Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
+// Must also enable a debug option (USBDEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing
+#define VERBOSE false
+#define DEBUG_BAUD_RATE 19200
+#define USBDEBUG false
 
 // only 115200 works with optiboot
 #define OPTIBOOT_BAUD_RATE 115200
@@ -113,7 +101,7 @@ const long PROG_TIMEOUT = 5000;
 // WARNING: never set this to true for a atmega328/168 as it needs Serial(0) for programming. If you do it will certainly fail on flash()
 // Only true for Leonardo (defaults to Serial(0) for debug) 
 // IMPORTANT: you must have the serial monitor open when usb debug enabled or will fail after a few packets!
-#define USBDEBUG true
+#define USBDEBUG false
 // UNTESTED!
 #define NSSDEBUG false
 #define NSSDEBUG_TX 6
@@ -122,17 +110,17 @@ const long PROG_TIMEOUT = 5000;
 // NOTE: ONLY SET THIS TRUE FOR TROUBLESHOOTING. FLASHING IS NOT POSSIBLE IF SET TO TRUE
 #define USE_SERIAL_FOR_DEBUG false
 
-const int resetPin = 9;
-
 // this can be reduced to the maximum packet size + header bytes
 // memory shouldn't be an issue on the programmer since it only should ever run this sketch!
+
+// TODO this is radio specific MOVE!
 #define BUFFER_SIZE 150
 #define READ_BUFFER_SIZE 150
 
 // TODO not implemented yet
-const int PROG_PAGE_RETRIES = 2;
+#define PROG_PAGE_RETRIES 2
 // the address to start writing the hex to the eeprom
-const int EEPROM_OFFSET_ADDRESS = 16;
+#define EEPROM_OFFSET_ADDRESS 16
 
 // ==================================================================END CONFIG ==================================================================
 
@@ -175,7 +163,6 @@ const int EEPROM_OFFSET_ADDRESS = 16;
 #define BOOTLOADER_REPLY_TIMEOUT 0xc2
 #define BOOTLOADER_UNEXPECTED_REPLY 0xc3
 
-
 // STK CONSTANTS
 #define STK_OK              0x10
 #define STK_INSYNC          0x14  // ' '
@@ -190,11 +177,21 @@ const int EEPROM_OFFSET_ADDRESS = 16;
 
 // =========================================================================
 
+// ** IMPORTANT! **
+// For Leonardo use Serial1 (UART) or it will try to program through usb-serial
+// For atmega328 use Serial
+// For megas other e.g. Serial2 should work -- UNTESTED!
+HardwareSerial* progammerSerial;
+HardwareSerial* debugSerial;
+
 uint8_t cmd_buffer[1];
 uint8_t addr[2];
+
+// TODO revisit these sizes
 uint8_t buffer[BUFFER_SIZE];
 uint8_t read_buffer[READ_BUFFER_SIZE];
 
+uint8_t resetPin = 9;
 int packet_count = 0;
 int num_packets = 0;
 int prog_size = 0;
@@ -209,6 +206,14 @@ int current_eeprom_address = EEPROM_OFFSET_ADDRESS;
 
 // TODO handle 512kb
 extEEPROM eeprom(kbits_256, 1, 64);
+
+//void setProgrammerSerial(HardwareSerial* _serial) {
+//  progammerSerial = _serial;
+//}
+//
+//void setResetPin(uint8_t _resetPin) {
+//  resetPin = _resetPin;
+//}
 
 HardwareSerial* getProgrammerSerial() {
   return progammerSerial;
@@ -864,7 +869,10 @@ int handlePacket(uint8_t packet[]) {
         return OK;
 }
 
-int setup_core() {
+int setupEepromFlasher(HardwareSerial* _serial, uint8_t _resetPin) {
+  progammerSerial = _serial;
+  resetPin = _resetPin;
+   
    // leonardo wait for serial
   #if (USBDEBUG)
     // start usb serial on leonardo for DEBUGging
@@ -887,7 +895,6 @@ int setup_core() {
     getProgrammerSerial()->begin(DEBUG_BAUD_RATE);
   #endif
 
-  
   if (eeprom.begin(twiClock400kHz) != 0) {
     #if (USBDEBUG || NSSDEBUG) 
       getDebugSerial()->println("eeprom failure");

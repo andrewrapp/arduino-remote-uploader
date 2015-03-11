@@ -17,16 +17,17 @@
  * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
  */
  
-// TODO support XBee series1
-
-#include "eeprom_flasher.h"
-
 #include <XBee.h>
 #include <SoftwareSerial.h>
 #include <extEEPROM.h>
 #include <Wire.h>
+#include <EEPROMFlasher.h>
 
+// TODO support XBee series1
+// should we proxy serial rx/tx to softserial (xbee). if you want to use the XBee from the application arduino set to true -- if only using xbee for programming set to false
+#define PROXY_SERIAL true
 #define XBEE_BAUD_RATE 9600
+#define PROG_TIMEOUT 5000
 // these can be swapped to any other free digital pins
 #define xBeeSoftTxPin 11
 #define xBeeSoftRxPin 10
@@ -55,8 +56,8 @@ Stream* getXBeeSerial() {
 }
 
 void setup() {
-  int setup_success = setup_core();
-
+  int setup = setupEepromFlasher(&Serial, 9);
+  
   // TODO if setup_success != OK send error programming attempt
   // we only have one Serial port (UART) so need nss for XBee
   
@@ -65,13 +66,13 @@ void setup() {
   
   if (PROXY_SERIAL) {
     getProgrammerSerial()->begin(XBEE_BAUD_RATE);    
-  }
+  } 
   
-    #if (USBDEBUG || NSSDEBUG) 
-      if (setup_success == 0) {
-        getDebugSerial()->println("Ready");
-      }
-    #endif   
+  #if (USBDEBUG || NSSDEBUG) 
+    if (setup == 0) {
+      getDebugSerial()->println("Ready");
+    }
+  #endif    
 }
 
 void checkTimeout() {
