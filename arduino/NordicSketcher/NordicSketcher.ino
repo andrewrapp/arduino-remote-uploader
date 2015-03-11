@@ -16,15 +16,15 @@
  * You should have received a copy of the GNU General Public License
  * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
  */
-
-#include "eeprom_flasher.h"
-
 #include <extEEPROM.h>
 // eeprom requires i2c
 #include <Wire.h>
 #include <SPI.h>
 #include "nRF24L01.h"
 #include "RF24.h"
+#include <EEPROMFlasher.h>
+
+#define PROXY_SERIAL false
 
 #define NORDIC_CE 10
 #define NORDIC_CS 11
@@ -40,16 +40,14 @@ RF24 radio(NORDIC_CE, NORDIC_CS);
 
 uint8_t replyPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0 };
 
-// Radio pipe addresses for the 2 nodes to communicate.
-//const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0xF0F0F0F0D2LL };
-
 uint64_t baseAddress = 0xca05cade05LL;
 const uint64_t pipes[2] = { baseAddress, baseAddress + 1 };
 
 uint8_t packet[NORDIC_PACKET_SIZE];
 
 void setup() {
-  int setup_success = setup_core();
+  // leonardo - use UART (serial1)
+  int setup = setupEepromFlasher(&Serial1, 9);
   
   radio.begin();
   radio.setChannel(0x8);
