@@ -1,3 +1,5 @@
+
+
 /**
  * Copyright (c) 2015 Andrew Rapp. All rights reserved.
  *
@@ -21,7 +23,7 @@
 #include <SoftwareSerial.h>
 #include <extEEPROM.h>
 #include <Wire.h>
-#include <EEPROMFlasher.h>
+#include <RemoteUploader.h>
 
 // TODO support XBee series1
 // should we proxy serial rx/tx to softserial (xbee). if you want to use the XBee from the application arduino set to true -- if only using xbee for programming set to false
@@ -51,12 +53,17 @@ ZBTxStatusResponse txStatus = ZBTxStatusResponse();
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
 SoftwareSerial nss(xBeeSoftTxPin, xBeeSoftRxPin);
 
+RemoteUploader remoteUploader = RemoteUploader();
+
+extEEPROM eeprom = extEEPROM(kbits_256, 1, 64);
+
 Stream* getXBeeSerial() {
   return &nss;  
 }
 
 void setup() {
-  int setup = setupEepromFlasher(&Serial, 9);
+  // setup uploader with the serial, eeprom and reset pin
+  remoteUploader.setup(&Serial, &eeprom, 9);
   
   // TODO if setup_success != OK send error programming attempt
   // we only have one Serial port (UART) so need nss for XBee
@@ -65,7 +72,7 @@ void setup() {
   xbee.setSerial(nss);
   
   if (PROXY_SERIAL) {
-    getProgrammerSerial()->begin(XBEE_BAUD_RATE);    
+    remoteUploader.getProgrammerSerial()->begin(XBEE_BAUD_RATE);    
   } 
   
   #if (USBDEBUG || NSSDEBUG) 
@@ -76,15 +83,15 @@ void setup() {
 }
 
 void checkTimeout() {
-  if (in_prog && last_packet > 0 && (millis() - last_packet) > PROG_TIMEOUT) {
+  if (remoteUploader.inProgrammingMode() && remoteUploader.getLastPacketMillis() > 0 && (millis() - remoteUploader.getLastPacketMillis()) > PROG_TIMEOUT) {
     // timeout
     #if (USBDEBUG || NSSDEBUG)
-      getDebugSerial()->println("Prog timeout");
+      remoteUploader.getDebugSerial()->println("Prog timeout");
     #endif  
     // tell host to start over
     sendReply(TIMEOUT);
     
-    prog_reset();
+    remoteUploader.reset();
   }
 }
 
@@ -93,8 +100,8 @@ void handleProxy() {
   // don't need to test in_prog. if in prog we are just collecting packets so can keep relaying. when flashing, it's blocking so will never get here
   // forward packets from target out the radio
   if (PROXY_SERIAL) {
-    while (getProgrammerSerial()->available() > 0) {
-      int b = getProgrammerSerial()->read();
+    while (remoteUploader.getProgrammerSerial()->available() > 0) {
+      int b = remoteUploader.getProgrammerSerial()->read();
       getXBeeSerial()->write(b); 
     }      
   }
@@ -144,13 +151,13 @@ int sendReply(uint8_t status) {
 // borrowed from xbee api. send bytes with proper escaping
 void send_xbee_packet(uint8_t b, bool escape) {
   if (escape && (b == START_BYTE || b == ESCAPE || b == XON || b == XOFF)) {
-    getProgrammerSerial()->write(ESCAPE);    
-    getProgrammerSerial()->write(b ^ 0x20);
+    remoteUploader.getProgrammerSerial()->write(ESCAPE);    
+    remoteUploader.getProgrammerSerial()->write(b ^ 0x20);
   } else {
-    getProgrammerSerial()->write(b);
+    remoteUploader.getProgrammerSerial()->write(b);
   }
   
-  getProgrammerSerial()->flush();
+  remoteUploader.getProgrammerSerial()->flush();
 }
 
 void forwardPacket() {
@@ -190,18 +197,19 @@ void loop() {
         // pointer of data position in response
         uint8_t *packet = xbee.getResponse().getFrameData() + rx.getDataOffset();
         
-        if (rx.getDataLength() > 4 && isProgrammingPacket(packet, rx.getDataLength())) {
+        if (rx.getDataLength() > 4 && remoteUploader.isProgrammingPacket(packet, rx.getDataLength())) {
           // send the packet array, length to be processed
-          int response = handlePacket(packet);
+          int response = remoteUploader.handlePacket(packet);
           
+          // do reset in library
           if (response != OK) {
-            prog_reset();
+            remoteUploader.reset();
           }
           
-          if (isFlashPacket(packet)) {
+          if (remoteUploader.isFlashPacket(packet)) {
             if (PROXY_SERIAL) {
               // we flashed so reset to xbee baud rate for proxying
-              getProgrammerSerial()->begin(XBEE_BAUD_RATE);              
+              remoteUploader.getProgrammerSerial()->begin(XBEE_BAUD_RATE);              
             }
           }
           
@@ -215,8 +223,8 @@ void loop() {
       }
   } else if (xbee.getResponse().isError()) {
     #if (USBDEBUG || NSSDEBUG) 
-      getDebugSerial()->print("RX error: ");
-      getDebugSerial()->println(xbee.getResponse().getErrorCode(), DEC);
+      remoteUploader.getDebugSerial()->print("RX error: ");
+      remoteUploader.getDebugSerial()->println(xbee.getResponse().getErrorCode(), DEC);
     #endif  
   }  
   

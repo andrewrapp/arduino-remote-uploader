@@ -65,6 +65,7 @@ public class XBeeSketchLoader extends SketchLoaderCore {
 	
 	// block size for eeprom writes
 //	public final int XBEE_PAGE_SIZE = 64;
+	// need to all room for header
 	public final int XBEE_PAGE_SIZE = 60;
 	
 	final ReentrantLock lock = new ReentrantLock();

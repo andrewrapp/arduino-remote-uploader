@@ -131,6 +131,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 		}		
 	}
 
+	// TODO put into superclass
 	public void process(String file, String device, int speed, String nordicAddress, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException {
 		// page size is max packet size for the radio
 		Sketch sketch = parseSketchFromIntelHex(file, NORDIC_PAGE_SIZE);
