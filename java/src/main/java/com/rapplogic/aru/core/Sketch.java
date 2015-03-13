@@ -1,4 +1,4 @@
-package com.rapplogic.sketcher;
+package com.rapplogic.aru.core;
 
 import java.util.List;
 

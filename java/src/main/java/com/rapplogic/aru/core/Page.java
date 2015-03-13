@@ -1,4 +1,4 @@
-package com.rapplogic.sketcher;
+package com.rapplogic.aru.core;
 
 public class Page {
 	private int address;

@@ -17,7 +17,7 @@
  * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.rapplogic.sketcher.nordic;
+package com.rapplogic.aru.uploader.nordic;
 
 import gnu.io.PortInUseException;
 import gnu.io.SerialPortEvent;
@@ -34,9 +34,9 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.apache.log4j.Logger;
 
 import com.google.common.collect.Lists;
-import com.rapplogic.sketcher.Page;
-import com.rapplogic.sketcher.Sketch;
-import com.rapplogic.sketcher.serial.SerialSketchLoader;
+import com.rapplogic.aru.core.Page;
+import com.rapplogic.aru.core.Sketch;
+import com.rapplogic.aru.uploader.serial.SerialSketchLoader;
 import com.rapplogic.xbee.api.XBeeException;
 
 /**

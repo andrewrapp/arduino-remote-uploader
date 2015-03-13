@@ -1,4 +1,4 @@
-package com.rapplogic.sketcher.serial;
+package com.rapplogic.aru.uploader.serial;
 
 
 import gnu.io.CommPortIdentifier;
@@ -13,9 +13,9 @@ import java.io.InputStream;
 import java.util.Enumeration;
 import java.util.TooManyListenersException;
 
-import com.rapplogic.sketcher.Page;
-import com.rapplogic.sketcher.Sketch;
-import com.rapplogic.sketcher.SketchLoaderCore;
+import com.rapplogic.aru.core.Page;
+import com.rapplogic.aru.core.Sketch;
+import com.rapplogic.aru.uploader.SketchUploader;
 
 /**
  * Loads a sketch from host filesystem onto an Arduino via an Arduino Leonardo, running the SerialSketcher sketch
@@ -23,7 +23,7 @@ import com.rapplogic.sketcher.SketchLoaderCore;
  * @author andrew
  *
  */
-public class SerialSketchLoader extends SketchLoaderCore implements SerialPortEventListener {
+public class SerialSketchLoader extends SketchUploader implements SerialPortEventListener {
 
 	final int FIRST_PAGE = 0xd;
 	final int LAST_PAGE = 0xf;

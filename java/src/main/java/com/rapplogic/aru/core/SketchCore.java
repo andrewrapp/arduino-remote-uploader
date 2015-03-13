@@ -17,14 +17,13 @@
  * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-package com.rapplogic.sketcher;
+package com.rapplogic.aru.core;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.Charset;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 import java.util.List;
 
 import org.apache.commons.codec.binary.Hex;
@@ -42,24 +41,12 @@ import com.google.common.io.Files;
  * @author andrew
  *
  */
-public class SketchLoaderCore {
+public class SketchCore {
 
 	public final int ARDUINO_PAGE_SIZE = 128;
 	public final int MAX_PROGRAM_SIZE = 0x20000;
-
-	public final int MAGIC_BYTE1 = 0xef;
-	public final int MAGIC_BYTE2 = 0xac;
-	// make enum
-	public final int CONTROL_PROG_REQUEST = 0x10; 	//10000
-	public final int CONTROL_WRITE_EEPROM = 0x20; 	//100000
-	// somewhat redundant
-	public final int CONTROL_START_FLASH = 0x40; 	//1000000
 	
-	public final int OK = 1;
-	public final int START_OVER = 2;
-	public final int TIMEOUT = 3;
-	
-	public SketchLoaderCore() {
+	public SketchCore() {
 
 	}
 	
@@ -233,57 +220,14 @@ public class SketchLoaderCore {
 		return new Sketch(program.length, pages, pageSize, program);
 	}
 	
-	public int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage) {
-		return new int[] { 
-				MAGIC_BYTE1, 
-				MAGIC_BYTE2, 
-				CONTROL_PROG_REQUEST, 
-				9, // xbee has length built-in but some may not (nordic w/o dynamic payload)
-				(sizeInBytes >> 8) & 0xff, 
-				sizeInBytes & 0xff, 
-				(numPages >> 8) & 0xff, 
-				numPages & 0xff,
-				bytesPerPage
-		};
-	}
-	
-	// TODO consider adding retry bit to header
-	
-	// NOTE if header size is ever changed must also change PROG_DATA_OFFSET in library
-	// xbee has error detection built-in but other protocols may need a checksum
-	private int[] getHeader(int controlByte, int addressOrSize, int dataLength) {
-		return new int[] {
-				MAGIC_BYTE1, 
-				MAGIC_BYTE2, 
-				controlByte, 
-				dataLength + 6, //length + 6 bytes for header
-				(addressOrSize >> 8) & 0xff, 
-				addressOrSize & 0xff
-		};
-	}
-
-	public int[] getEEPROMWriteHeader(int address16, int dataLength) {
-		return getHeader(CONTROL_WRITE_EEPROM, address16, dataLength);
-	}
-	
-	public int[] getFlashStartHeader(int progSize) {
-		return getHeader(CONTROL_START_FLASH, progSize, 0);
-	}	
-
-	protected int[] combine(int[] a, int[] b) {
-		int[] result = Arrays.copyOf(a, a.length + b.length);
-		System.arraycopy(b, 0, result, a.length, b.length);
-		return result;
-	}
-	
 	protected static void initLog4j() {
 		  ConsoleAppender console = new ConsoleAppender();
 		  String PATTERN = "%d [%p|%c|%C{1}] %m%n";
 		  console.setLayout(new PatternLayout(PATTERN)); 
 		  console.activateOptions();
 		  // only log this package
-		  Logger.getLogger(SketchLoaderCore.class.getPackage().getName()).addAppender(console);
-		  Logger.getLogger(SketchLoaderCore.class.getPackage().getName()).setLevel(Level.ERROR);
+		  Logger.getLogger(SketchCore.class.getPackage().getName()).addAppender(console);
+		  Logger.getLogger(SketchCore.class.getPackage().getName()).setLevel(Level.ERROR);
 		  Logger.getRootLogger().addAppender(console);
 		  // quiet logger
 		  Logger.getRootLogger().setLevel(Level.ERROR);

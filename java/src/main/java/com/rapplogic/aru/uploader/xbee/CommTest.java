@@ -1,4 +1,4 @@
-package com.rapplogic.sketcher.xbee;
+package com.rapplogic.aru.uploader.xbee;
 
 import java.io.IOException;
 
