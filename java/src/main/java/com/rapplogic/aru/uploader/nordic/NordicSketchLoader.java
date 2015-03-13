@@ -1,20 +1,20 @@
 /**
  * Copyright (c) 2015 Andrew Rapp. All rights reserved.
  *
- * This file is part of arduino-sketcher
+ * This file is part of ardruino-remote-uploader
  *
- * arduino-sketcher is free software: you can redistribute it and/or modify
+ * ardruino-remote-uploader is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * arduino-sketcher is distributed in the hope that it will be useful,
+ * ardruino-remote-uploader is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
+ * along with ardruino-remote-uploader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package com.rapplogic.aru.uploader.nordic;
@@ -199,8 +199,8 @@ public class NordicSketchLoader extends SerialSketchLoader {
 //			runFromCmdLine(args);
 //		} else {
 			// run from eclipse for dev
-//			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
-			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+//			new NordicSketchLoader().process("/Users/andrew/Documents/dev/ardruino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+			new NordicSketchLoader().process("/Users/andrew/Documents/dev/ardruino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
 //		}
 	}
 }
