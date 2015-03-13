@@ -139,6 +139,9 @@ int send_packet() {
       success = START_OVER;
     } else if (ack[2] == 3) {     
       success = TIMEOUT;
+    } else {
+      Serial.print("Unexpected reply code: "); Serial.println(ack[2], HEX);
+      success = START_OVER;
     }
         
     //dump_buffer(ack, 32, "ACK");
@@ -223,8 +226,8 @@ void loop() {
             Serial.print("Unexpected response: "); Serial.println(response, DEC);
             break; 
           }
-        }  
-        
+        }
+
         if (sent) {
           Serial.println("OK");
         } else {
