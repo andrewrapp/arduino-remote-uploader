@@ -55,7 +55,7 @@ public abstract class SketchUploader extends SketchCore {
 
 	}
 		
-	public int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage) {
+	public int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage, int timeout) {
 		return new int[] { 
 				MAGIC_BYTE1, 
 				MAGIC_BYTE2, 
@@ -65,11 +65,13 @@ public abstract class SketchUploader extends SketchCore {
 				sizeInBytes & 0xff, 
 				(numPages >> 8) & 0xff, 
 				numPages & 0xff,
-				bytesPerPage
+				bytesPerPage,
+				timeout & 0xff				
 		};
 	}
 	
 	// TODO consider adding retry bit to header
+	// TODO consider sending force reset bit to header
 	
 	// NOTE if header size is ever changed must also change PROG_DATA_OFFSET in library
 	// xbee has error detection built-in but other protocols may need a checksum
@@ -100,12 +102,23 @@ public abstract class SketchUploader extends SketchCore {
 
 	protected abstract void open(Map<String,Object> context) throws Exception;
 	protected abstract void writeData(int[] data, Map<String,Object> context) throws Exception;
-	protected abstract void waitForAck(int timeout) throws Exception;
+	protected abstract void waitForAck(int timeout) throws NoAckException, Exception;
 	protected abstract void close() throws Exception;
 	protected abstract String getName();
 	
-	// TODO put into superclass
-	public void process(String file, int pageSize, int timeout, boolean verbose, Map<String,Object> context) throws IOException {
+	private final int RETRIES = 5;
+	
+	/**
+	 * 
+	 * @param file
+	 * @param pageSize
+	 * @param ackTimeout how long we wait for an ack before retrying
+	 * @param arduinoTimeout how long before arduino resets after no activity
+	 * @param verbose
+	 * @param context
+	 * @throws IOException
+	 */
+	public void process(String file, int pageSize, int ackTimeout, int arduinoTimeout, boolean verbose, Map<String,Object> context) throws IOException {
 		// page size is max packet size for the radio
 		Sketch sketch = parseSketchFromIntelHex(file, pageSize);
 			
@@ -115,12 +128,13 @@ public abstract class SketchUploader extends SketchCore {
 			open(context);
 			
 			long start = System.currentTimeMillis();
-			
-			System.out.println("Sending sketch to " + getName() + " radio, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));			
+			int[] startHeader = getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage(), arduinoTimeout);
+					
+			System.out.println("Sending sketch to " + getName() + " radio, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(startHeader));			
 
-			writeData(getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage()), context);
+			writeData(startHeader, context);
 			
-			waitForAck(timeout);
+			waitForAck(ackTimeout);
 			
 			for (Page page : sketch.getPages()) {				
 				// make sure we exit on a kill signal like a good app
@@ -135,16 +149,28 @@ public abstract class SketchUploader extends SketchCore {
 //					System.out.println("Data " + toHex(page.getData()));
 				} else {
 					System.out.print(".");
+					
+					if (page.getOrdinal() > 0 && page.getOrdinal() % 80 == 0) {
+						System.out.println("");
+					}
 				}
 
-				try {
-					writeData(data, context);					
-				} catch (Exception e) {
-					throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size(), e);
+				// TODO make configurable
+				for (int i = 0 ;i < RETRIES; i++) {
+					try {
+						try {
+							writeData(data, context);					
+						} catch (Exception e) {
+							throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size(), e);
+						}
+						
+						// don't send next page until this one is processed or we will overflow the buffer
+						waitForAck(ackTimeout);		
+						break;
+					} catch (NoAckException e) {
+						System.out.println("Failed to deliver programming packet " + e.getMessage() + ".. retrying " + data);
+					}
 				}
-				
-				// don't send next page until this one is processed or we will overflow the buffer
-				waitForAck(timeout);
 			}
 
 			if (!verbose) {
@@ -153,10 +179,18 @@ public abstract class SketchUploader extends SketchCore {
 
 			System.out.println("Sending flash start packet " + toHex(getFlashStartHeader(sketch.getSize())));
 			
-			writeData(getFlashStartHeader(sketch.getSize()), context);
+			int[] flash = getFlashStartHeader(sketch.getSize());
 			
-			waitForAck(timeout);
-			
+			for (int i = 0 ;i < RETRIES; i++) {
+				try {
+					writeData(flash, context);
+					waitForAck(ackTimeout);	
+					break;
+				} catch (NoAckException e) {
+					System.out.println("Failed to deliver flash packet.. retrying" + flash);
+				}
+			}
+
 			System.out.println("Successfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
 		} catch (InterruptedException e) {
 			// kill signal
@@ -169,5 +203,29 @@ public abstract class SketchUploader extends SketchCore {
 				close();
 			} catch (Exception e) {}
 		}
+	}
+	
+	public static class NoAckException extends Exception {
+
+		public NoAckException() {
+			super();
+			// TODO Auto-generated constructor stub
+		}
+
+		public NoAckException(String arg0, Throwable arg1) {
+			super(arg0, arg1);
+			// TODO Auto-generated constructor stub
+		}
+
+		public NoAckException(String arg0) {
+			super(arg0);
+			// TODO Auto-generated constructor stub
+		}
+
+		public NoAckException(Throwable arg0) {
+			super(arg0);
+			// TODO Auto-generated constructor stub
+		}
+		
 	}
 }

@@ -73,13 +73,23 @@ public class XBeeSketchUploader extends SketchUploader {
 		super();
 	}
 	
-	public void waitForAck(final int timeout) throws InterruptedException {
+//	2015-03-13 07:12:10,984 [ERROR|com.rapplogic.aru.uploader.SketchUploader|SketchUploader] Unexpected error
+//	java.lang.RuntimeException: No reply from Arduino after 5 seconds
+//		at com.rapplogic.aru.uploader.xbee.XBeeSketchUploader.waitForAck(XBeeSketchUploader.java:97)
+//		at com.rapplogic.aru.uploader.SketchUploader.process(SketchUploader.java:123)
+//		at com.rapplogic.aru.uploader.xbee.XBeeSketchUploader.process(XBeeSketchUploader.java:113)
+//		at com.rapplogic.aru.uploader.xbee.XBeeSketchUploader.main(XBeeSketchUploader.java:176)
+		
+	
+	public void waitForAck(final int timeout) throws InterruptedException, NoAckException {
 		long now = System.currentTimeMillis();
 		// TODO send this timeout to arduino in prog start header
 		
 		lock.lockInterruptibly();
 		
 		try {
+			System.out.println("waiting up to " + timeout + " seconds");
+			
 			if (rxPacketCondition.await(timeout, TimeUnit.SECONDS)) {
 				int reply = messages.get(0).intValue();
 				
@@ -87,30 +97,38 @@ public class XBeeSketchUploader extends SketchUploader {
 				case OK:
 					break;
 				case START_OVER:
-					throw new RuntimeException("Upload failed: arduino received a program packet when it was not in prog mode.. start over");
+					throw new RuntimeException("Upload failed: arduino said to start over");
 				case TIMEOUT:
-					throw new RuntimeException("Upload failed:: arduino had not received a packet for " + timeout + " secs and timed-out.. start over");
+					throw new RuntimeException("Upload failed: arduino sent a timeout reply.. start over");
 				default:
 					throw new RuntimeException("Unexpected response code from arduino: " + toHex(new int[] {reply}));						
 				}				
 			} else {
-				throw new RuntimeException("No reply from Arduino after " + timeout + " seconds");				
+				throw new NoAckException("No ACK from XBee after " + timeout + " seconds");				
 			}				
 		} finally {
 			lock.unlock();
 		}
+		
+
+		// test arduino timeout
+//		counter++;
+//		if (counter == 3) {
+//			System.out.println("sloooow");
+//			Thread.sleep(7000);
+//		}
 	}
 	
 	private XBee xbee = new XBee();
 	
-	public void process(String file, String device, int speed, String xbeeAddress, final boolean verbose, int timeout) throws IOException {
+	public void process(String file, String device, int speed, String xbeeAddress, final boolean verbose, int ackTimeout, int arduinoTimeout) throws IOException {
 		Map<String,Object> context = Maps.newHashMap();
 		context.put("device", device);
 		context.put("speed", speed);
 		XBeeAddress64 xBeeAddress64 = new XBeeAddress64(xbeeAddress);
 		context.put("xbeeAddress", xBeeAddress64);
 		
-		super.process(file, XBEE_PAGE_SIZE, timeout, verbose, context);
+		super.process(file, XBEE_PAGE_SIZE, ackTimeout, arduinoTimeout, verbose, context);
 	}
 
 	private static void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException {
@@ -163,19 +181,7 @@ public class XBeeSketchUploader extends SketchUploader {
 		}
 		
 		// cmd line
-		new XBeeSketchUploader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), baud, cmd.getOptionValue(xbeeAddress), verbose, timeout);
-	}
-	
-	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
-		initLog4j();
-		
-		if (false) {
-			runFromCmdLine(args);
-		} else {
-			// run from eclipse for dev
-			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
-//			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
-		}
+		new XBeeSketchUploader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), baud, cmd.getOptionValue(xbeeAddress), verbose, timeout, 20);
 	}
 
 	@Override
@@ -219,6 +225,8 @@ public class XBeeSketchUploader extends SketchUploader {
 		});
 	}
 
+	int counter = 1;
+	
 	@Override
 	protected void writeData(int[] data, Map<String,Object> context) throws Exception {
 		XBeeAddress64 address = (XBeeAddress64) context.get("xbeeAddress");
@@ -243,4 +251,24 @@ public class XBeeSketchUploader extends SketchUploader {
 	protected String getName() {
 		return "xbee";
 	}
+	
+	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
+		initLog4j();
+		
+		if (false) {
+			runFromCmdLine(args);
+		} else {
+			// run from eclipse for dev
+			// TODO timeout 
+			
+			// TODO timeout needs to be a divisible by the arduino time by the number of expected retries
+//			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5, 60);
+//			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 1);
+			
+			// bigger sketch
+			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5, 60);
+			
+		}
+	}
+	
 }

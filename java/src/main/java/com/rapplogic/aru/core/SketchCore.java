@@ -227,7 +227,7 @@ public class SketchCore {
 		  console.activateOptions();
 		  // only log this package
 		  Logger.getLogger(SketchCore.class.getPackage().getName()).addAppender(console);
-		  Logger.getLogger(SketchCore.class.getPackage().getName()).setLevel(Level.ERROR);
+		  Logger.getLogger(SketchCore.class.getPackage().getName()).setLevel(Level.WARN);
 		  Logger.getRootLogger().addAppender(console);
 		  // quiet logger
 		  Logger.getRootLogger().setLevel(Level.ERROR);

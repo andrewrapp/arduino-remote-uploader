@@ -138,7 +138,7 @@ public class NordicSketchUploader extends SerialSketchUploader {
 		context.put("speed", speed);
 		context.put("nordicAddress", nordicAddress);
 		
-		super.process(file, NORDIC_PAGE_SIZE, timeout, verbose, context);
+		super.process(file, NORDIC_PAGE_SIZE, 3, 20, verbose, context);
 	}
 	
 	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException {		
