@@ -27,6 +27,9 @@
 
 #include "HardwareSerial.h"
 
+// TODO check debug serial for null so we don't crash if debug is accidently set to true
+
+ 
 // Leonardo (usb-serial) is required for DEBUG. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true and it fails in unexpected ways! :(
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
 
@@ -106,6 +109,9 @@ bool RemoteUploader::inProgrammingMode() {
   return inProgramming;
 }
 
+/* 
+* Returns the time of last successful packet processed
+*/
 long RemoteUploader::getLastPacketMillis() {
   return lastUpdateAtMillis;
 }
@@ -579,6 +585,18 @@ bool RemoteUploader::isFlashPacket(uint8_t packet[]) {
   return false;
 }
 
+bool RemoteUploader::isTimeout() {
+  if (getLastPacketMillis() > 0 && (millis() - getLastPacketMillis()) > programmingTimeout) {
+    #if (DEBUG)
+      getDebugSerial()->println("Prog timeout");
+    #endif      
+
+    return true;
+  }
+
+  return false;
+}
+
 // process packet and return reply code for host
 int RemoteUploader::process(uint8_t packet[]) {
     // if programming start magic packet is received:
@@ -631,7 +649,15 @@ int RemoteUploader::process(uint8_t packet[]) {
           programSize = (packet[4] << 8) + packet[5];
           // num packets to expect
           numPackets = packet[6] << 8 + packet[7];   
+          bytesPerPacket = packet[8];
+          programmingTimeout = 1000 * ((long) packet[9]);
         } else if (packet[2] == CONTROL_PROG_DATA && inProgramming) {
+
+          if (isTimeout()) {
+            reset();
+            return TIMEOUT;
+          }
+
           packetCount++;
           
           // data starts at 16 (12 bytes xbee header + data header
@@ -651,19 +677,20 @@ int RemoteUploader::process(uint8_t packet[]) {
           
           // now write page to eeprom
 
-          // check if the address of this packet aligns with the last write to eeprom. it could be a resend and that's ok
-          if (currentEEPROMAddress < (address + EEPROM_OFFSET_ADDRESS)) {
+          // check if the address of this packet aligns with the last write to eeprom
+          if ((address + EEPROM_OFFSET_ADDRESS) < currentEEPROMAddress) {
+            // ok, looks like a retry
             #if (DEBUG)
               getDebugSerial()->print("WARN: expected address "); getDebugSerial()->print(currentEEPROMAddress, DEC); getDebugSerial()->print(" but got "); getDebugSerial()->println(address + EEPROM_OFFSET_ADDRESS, DEC);
             #endif
-          } else if (currentEEPROMAddress > (address + EEPROM_OFFSET_ADDRESS)) {
+          } else if ((address + EEPROM_OFFSET_ADDRESS) > currentEEPROMAddress) {
             // attempt to write beyond current eeprom address
             // this would result in a gap in data and would ultimately fail, so reject
             #if (DEBUG)
               getDebugSerial()->print("ERROR: attempt to write @ address "); getDebugSerial()->print((address + EEPROM_OFFSET_ADDRESS) & 0xff, DEC); getDebugSerial()->print(" but current address @ "); getDebugSerial()->println(currentEEPROMAddress & 0xff, DEC);            
             #endif
             
-            return START_OVER;
+            return ADDRESS_SKIP_ERROR;
           }
 
           // NOTE we've made it idempotent in case we get retries
@@ -700,6 +727,11 @@ int RemoteUploader::process(uint8_t packet[]) {
           // TODO write a checksum in eeprom header so we can verify prior to flashing                          
           // prog data
         } else if (isFlashPacket(packet) && inProgramming) {
+          if (isTimeout()) {
+            reset();
+            return TIMEOUT;
+          }
+
           // done verify we got expected # packets
 
 //        MAGIC_BYTE1, 

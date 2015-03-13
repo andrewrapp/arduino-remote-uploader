@@ -29,7 +29,10 @@
 // should we proxy serial rx/tx to softserial (xbee). if you want to use the XBee from the application arduino set to true -- if only using xbee for programming set to false
 #define PROXY_SERIAL true
 #define XBEE_BAUD_RATE 9600
-#define PROG_TIMEOUT 5000
+
+// TODO send with start header
+#define ACK_TIMEOUT 1000
+
 // these can be swapped to any other free digital pins
 #define xBeeSoftTxPin 11
 #define xBeeSoftRxPin 10
@@ -82,18 +85,18 @@ void setup() {
   #endif    
 }
 
-void checkTimeout() {
-  if (remoteUploader.inProgrammingMode() && remoteUploader.getLastPacketMillis() > 0 && (millis() - remoteUploader.getLastPacketMillis()) > PROG_TIMEOUT) {
-    // timeout
-    #if (USBDEBUG || NSSDEBUG)
-      remoteUploader.getDebugSerial()->println("Prog timeout");
-    #endif  
-    // tell host to start over
-    sendReply(TIMEOUT);
-    
-    remoteUploader.reset();
-  }
-}
+//void checkTimeout() {
+//  if (remoteUploader.inProgrammingMode() && remoteUploader.getLastPacketMillis() > 0 && (millis() - remoteUploader.getLastPacketMillis()) > PROG_TIMEOUT) {
+//    // timeout
+//    #if (USBDEBUG || NSSDEBUG)
+//      remoteUploader.getDebugSerial()->println("Prog timeout");
+//    #endif  
+//    // tell host to start over
+//    sendReply(TIMEOUT);
+//    
+//    remoteUploader.reset();
+//  }
+//}
 
 // TODO move to library.. tell library of the proxySerial port
 void handleProxy() {
@@ -118,7 +121,7 @@ int sendReply(uint8_t status) {
   
   // after send a tx request, we expect a status response
   // wait up to half second for the status response
-  if (xbee.readPacket(1000)) {    
+  if (xbee.readPacket(ACK_TIMEOUT)) {    
     if (xbee.getResponse().getApiId() == ZB_TX_STATUS_RESPONSE) {
       xbee.getResponse().getZBTxStatusResponse(txStatus);
 
@@ -205,15 +208,15 @@ void loop() {
           if (response != OK) {
             remoteUploader.reset();
           }
+ 
+          sendReply(response);          
           
           if (remoteUploader.isFlashPacket(packet)) {
             if (PROXY_SERIAL) {
               // we flashed so reset to xbee baud rate for proxying
               remoteUploader.getProgrammerSerial()->begin(XBEE_BAUD_RATE);              
             }
-          }
-          
-          sendReply(response);          
+          }          
         } else {
           // not a programming packet. forward along
           if (PROXY_SERIAL) {
@@ -228,6 +231,5 @@ void loop() {
     #endif  
   }  
   
-  checkTimeout();
   handleProxy();
 }

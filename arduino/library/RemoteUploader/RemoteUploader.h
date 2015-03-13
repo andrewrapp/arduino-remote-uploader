@@ -30,10 +30,12 @@
 #include <SoftwareSerial.h>
 #include <extEEPROM.h>
 
+// TODO how do we pass in DEBUG as a parameter??
+
 // Enable debugging statments on any arduino that has multiple serial ports. Must also call setDebugSerial()
 // Never set to Serial on atmega328/168 as it needs Serial for programming and it will certainly fail on flash()
 // IMPORTANT: you must have the serial monitor open when usb debug enabled or will fail after a few packets!
-#define DEBUG true
+#define DEBUG false
 
 // Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
 // Must also enable a debug option (DEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing
@@ -98,6 +100,7 @@
 // serial lines not connected or reset pin not connected
 #define NOBOOTLOADER_ERROR 8
 #define VERIFY_PAGE_ERROR 9
+#define ADDRESS_SKIP_ERROR 10
 
 // STK CONSTANTS
 #define STK_OK              0x10
@@ -119,10 +122,11 @@ public:
 	int setup(HardwareSerial* _serial, extEEPROM* _eeprom, uint8_t _resetPin);
 	bool inProgrammingMode();
 	long getLastPacketMillis();
+	bool isTimeout();
 	void reset();
 	bool isProgrammingPacket(uint8_t packet[], uint8_t packet_length);
 	bool isFlashPacket(uint8_t packet[]);
-	HardwareSerial* getProgrammerSerial();
+	HardwareSerial* getProgrammerSerial();	
 	// can only use DEBUG with Leonardo or other variant that supports multiple serial ports
 	#if (DEBUG)
 	  Stream* getDebugSerial();
@@ -156,6 +160,8 @@ private:
 	long programmingStartMillis;
 	long lastUpdateAtMillis;
 	int currentEEPROMAddress;
+	uint8_t bytesPerPacket;
+	long programmingTimeout;
 };
 
 #endif // guard
