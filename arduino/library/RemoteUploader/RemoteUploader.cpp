@@ -583,7 +583,7 @@ bool RemoteUploader::isFlashPacket(uint8_t packet[]) {
 }
 
 // process packet and return reply code for host
-int RemoteUploader::handlePacket(uint8_t packet[]) {
+int RemoteUploader::process(uint8_t packet[]) {
     // if programming start magic packet is received:
     // reset the target arduino.. determine the neecessary delay
     // send data portion of packets to serial.. but look for magic word on packet so we know it's programming data

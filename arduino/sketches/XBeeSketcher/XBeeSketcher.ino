@@ -199,7 +199,7 @@ void loop() {
         
         if (rx.getDataLength() > 4 && remoteUploader.isProgrammingPacket(packet, rx.getDataLength())) {
           // send the packet array, length to be processed
-          int response = remoteUploader.handlePacket(packet);
+          int response = remoteUploader.process(packet);
           
           // do reset in library
           if (response != OK) {

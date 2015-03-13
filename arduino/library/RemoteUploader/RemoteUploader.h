@@ -64,7 +64,7 @@
 
 #define VERSION = 1;
 
-// error codes returned by handlePacket
+// error codes returned by process
 // every packet must return exactly one reply: OK or NOT OK. NOT OK is anything > 1
 // TODO make sure only one reply code is sent!
 #define OK 1
@@ -96,7 +96,7 @@ class RemoteUploader {
 public:
 	RemoteUploader();
 	void dumpBuffer(uint8_t arr[], char context[], uint8_t len);	
-	int handlePacket(uint8_t packet[]);
+	int process(uint8_t packet[]);
 	int setup(HardwareSerial* _serial, extEEPROM* _eeprom, uint8_t _resetPin);
 	bool inProgrammingMode();
 	long getLastPacketMillis();

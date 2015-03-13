@@ -53,7 +53,7 @@ void setup() {
   // use leonardo (serial1)
   remoteUploader.setup(&Serial1, &eeprom, 9);
   // use usb-serial for debug
-  remoteUploader.setDebugSerial(&Serial);
+  //remoteUploader.setDebugSerial(&Serial);
   
   radio.begin();
   radio.setChannel(0x8);
@@ -106,7 +106,7 @@ void loop() {
       if (remoteUploader.isProgrammingPacket(packet, 32)) {
         //dump_buffer(packet, "Received packet", NORDIC_PACKET_SIZE);
         
-        int response = remoteUploader.handlePacket(packet);
+        int response = remoteUploader.process(packet);
         
         if (response != OK) {
           remoteUploader.reset();

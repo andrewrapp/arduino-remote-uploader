@@ -76,9 +76,6 @@ void dump_buffer(uint8_t arr[], uint8_t len, char context[]) {
 }
 
 void setup(void) {
-  while (!Serial);
-  Serial.begin(19200);
-
   radio.begin();
 
   // doesn't say what the default is
@@ -95,6 +92,9 @@ void setup(void) {
   radio.openWritingPipe(pipes[0]);
   radio.openReadingPipe(1,pipes[1]);      
   radio.startListening();
+  
+  while (!Serial);
+  Serial.begin(19200);  
 }
 
 uint8_t data_pos = 0;
