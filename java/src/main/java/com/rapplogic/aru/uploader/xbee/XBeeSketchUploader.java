@@ -87,9 +87,7 @@ public class XBeeSketchUploader extends SketchUploader {
 		
 		lock.lockInterruptibly();
 		
-		try {
-			System.out.println("waiting up to " + timeout + " seconds");
-			
+		try {			
 			if (rxPacketCondition.await(timeout, TimeUnit.SECONDS)) {
 				int reply = messages.get(0).intValue();
 				
@@ -220,6 +218,16 @@ public class XBeeSketchUploader extends SketchUploader {
 					} else {
 						System.out.println("Ignoring non-programming packet " + zb);
 					}
+				} else if (response.getApiId() == ApiId.ZNET_TX_STATUS_RESPONSE) {
+					ZNetTxStatusResponse zNetTxStatusResponse = (ZNetTxStatusResponse) response;
+					
+					if (zNetTxStatusResponse.isSuccess()) {
+						// yay					
+					} else {
+						// in a thread so just wait for ack to fail
+						// TODO send message to waitForAck
+						System.out.println("Failed to delivery packet: " + response);
+					}
 				}
 			}
 		});
@@ -230,16 +238,7 @@ public class XBeeSketchUploader extends SketchUploader {
 	@Override
 	protected void writeData(int[] data, Map<String,Object> context) throws Exception {
 		XBeeAddress64 address = (XBeeAddress64) context.get("xbeeAddress");
-		
-		ZNetTxStatusResponse response = (ZNetTxStatusResponse) xbee.sendSynchronous(new ZNetTxRequest(address, data));
-		
-		if (response.isSuccess() || response.getDeliveryStatus() != DeliveryStatus.SUCCESS) {
-//			System.out.print("#");					
-		} else {
-			// TODO handle retries
-			// that radio is powered on
-			throw new RuntimeException("Failed to deliver packet. response " + response);
-		}
+		xbee.sendAsynchronous(new ZNetTxRequest(address, data));
 	}
 
 	@Override

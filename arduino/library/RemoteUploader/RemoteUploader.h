@@ -100,7 +100,7 @@
 // serial lines not connected or reset pin not connected
 #define NOBOOTLOADER_ERROR 8
 #define VERIFY_PAGE_ERROR 9
-#define ADDRESS_SKIP_ERROR 10
+#define ADDRESS_SKIP_ERROR 0xa
 
 // STK CONSTANTS
 #define STK_OK              0x10
@@ -160,6 +160,7 @@ private:
 	long programmingStartMillis;
 	long lastUpdateAtMillis;
 	int currentEEPROMAddress;
+	int maxEEPROMAddress;
 	uint8_t bytesPerPacket;
 	long programmingTimeout;
 };

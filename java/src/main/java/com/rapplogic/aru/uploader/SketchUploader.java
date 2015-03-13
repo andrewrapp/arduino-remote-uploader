@@ -144,20 +144,20 @@ public abstract class SketchUploader extends SketchCore {
 				
 				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16(), page.getData().length), page.getData());
 				
-				if (verbose) {
-					System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
-//					System.out.println("Data " + toHex(page.getData()));
-				} else {
-					System.out.print(".");
-					
-					if (page.getOrdinal() > 0 && page.getOrdinal() % 80 == 0) {
-						System.out.println("");
-					}
-				}
-
 				// TODO make configurable
 				for (int i = 0 ;i < RETRIES; i++) {
 					try {
+						if (verbose) {
+							System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
+//							System.out.println("Data " + toHex(page.getData()));
+						} else {
+							System.out.print(".");
+							
+							if (page.getOrdinal() > 0 && page.getOrdinal() % 80 == 0) {
+								System.out.println("");
+							}
+						}
+						
 						try {
 							writeData(data, context);					
 						} catch (Exception e) {
@@ -206,26 +206,9 @@ public abstract class SketchUploader extends SketchCore {
 	}
 	
 	public static class NoAckException extends Exception {
-
-		public NoAckException() {
-			super();
-			// TODO Auto-generated constructor stub
-		}
-
-		public NoAckException(String arg0, Throwable arg1) {
-			super(arg0, arg1);
-			// TODO Auto-generated constructor stub
-		}
-
 		public NoAckException(String arg0) {
 			super(arg0);
 			// TODO Auto-generated constructor stub
 		}
-
-		public NoAckException(Throwable arg0) {
-			super(arg0);
-			// TODO Auto-generated constructor stub
-		}
-		
 	}
 }

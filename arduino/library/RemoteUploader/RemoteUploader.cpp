@@ -29,7 +29,7 @@
 
 // TODO check debug serial for null so we don't crash if debug is accidently set to true
 
- 
+
 // Leonardo (usb-serial) is required for DEBUG. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true and it fails in unexpected ways! :(
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
 
@@ -103,6 +103,7 @@ RemoteUploader::RemoteUploader() {
   long programmingStartMillis = 0;
   long lastUpdateAtMillis = 0;
   int currentEEPROMAddress = EEPROM_OFFSET_ADDRESS;
+  int maxEEPROMAddress = currentEEPROMAddress;
 }
 
 bool RemoteUploader::inProgrammingMode() {
@@ -460,6 +461,7 @@ void RemoteUploader::reset() {
   programmingStartMillis = 0;
   lastUpdateAtMillis = 0;
   currentEEPROMAddress = EEPROM_OFFSET_ADDRESS;
+  maxEEPROMAddress = currentEEPROMAddress;
 }
 
 void RemoteUploader::bounce() {    
@@ -678,18 +680,23 @@ int RemoteUploader::process(uint8_t packet[]) {
           // now write page to eeprom
 
           // check if the address of this packet aligns with the last write to eeprom
-          if ((address + EEPROM_OFFSET_ADDRESS) < currentEEPROMAddress) {
-            // ok, looks like a retry
+          if ((address + EEPROM_OFFSET_ADDRESS) < maxEEPROMAddress) {
+            // ok, looks like a retry for a packet that got processed but the ack failed
             #if (DEBUG)
               getDebugSerial()->print("WARN: expected address "); getDebugSerial()->print(currentEEPROMAddress, DEC); getDebugSerial()->print(" but got "); getDebugSerial()->println(address + EEPROM_OFFSET_ADDRESS, DEC);
             #endif
-          } else if ((address + EEPROM_OFFSET_ADDRESS) > currentEEPROMAddress) {
+          } else if ((address + EEPROM_OFFSET_ADDRESS) > maxEEPROMAddress) {
             // attempt to write beyond current eeprom address
             // this would result in a gap in data and would ultimately fail, so reject
             #if (DEBUG)
               getDebugSerial()->print("ERROR: attempt to write @ address "); getDebugSerial()->print((address + EEPROM_OFFSET_ADDRESS) & 0xff, DEC); getDebugSerial()->print(" but current address @ "); getDebugSerial()->println(currentEEPROMAddress & 0xff, DEC);            
             #endif
             
+            // FIXME still getting this
+            // need a hash of each address to know when all have been written
+            // could clear eeprom before read each address to know if it has been written
+
+            // still getting
             return ADDRESS_SKIP_ERROR;
           }
 
@@ -714,6 +721,10 @@ int RemoteUploader::process(uint8_t packet[]) {
           }
           
           currentEEPROMAddress+= dataLen;
+
+          if (currentEEPROMAddress > maxEEPROMAddress) {
+            maxEEPROMAddress = currentEEPROMAddress;
+          }          
 
 //          #if (DEBUG)
 //            getDebugSerial()->print("len is "); getDebugSerial()->println(len, DEC);
@@ -754,7 +765,7 @@ int RemoteUploader::process(uint8_t packet[]) {
           // NOTE redundant we have programSize
           int psize = (packet[4] << 8) + packet[5];
                     
-          if (psize != currentEEPROMAddress - EEPROM_OFFSET_ADDRESS) {
+          if (psize != maxEEPROMAddress - EEPROM_OFFSET_ADDRESS) {
             #if (DEBUG) 
               getDebugSerial()->print("psize "); getDebugSerial()->print(psize, HEX); getDebugSerial()->print(",cur addr "); getDebugSerial()->println(currentEEPROMAddress - EEPROM_OFFSET_ADDRESS, HEX);
             #endif              
