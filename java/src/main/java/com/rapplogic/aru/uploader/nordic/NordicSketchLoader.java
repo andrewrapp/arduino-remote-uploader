@@ -1,20 +1,20 @@
 /**
  * Copyright (c) 2015 Andrew Rapp. All rights reserved.
  *
- * This file is part of ardruino-remote-uploader
+ * This file is part of arduino-remote-uploader
  *
- * ardruino-remote-uploader is free software: you can redistribute it and/or modify
+ * arduino-remote-uploader is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ardruino-remote-uploader is distributed in the hope that it will be useful,
+ * arduino-remote-uploader is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with ardruino-remote-uploader.  If not, see <http://www.gnu.org/licenses/>.
+ * along with arduino-remote-uploader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package com.rapplogic.aru.uploader.nordic;
@@ -25,7 +25,6 @@ import gnu.io.UnsupportedCommOperationException;
 
 import java.io.IOException;
 import java.text.ParseException;
-import java.util.List;
 import java.util.TooManyListenersException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
@@ -33,7 +32,6 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.log4j.Logger;
 
-import com.google.common.collect.Lists;
 import com.rapplogic.aru.core.Page;
 import com.rapplogic.aru.core.Sketch;
 import com.rapplogic.aru.uploader.serial.SerialSketchLoader;
@@ -199,8 +197,8 @@ public class NordicSketchLoader extends SerialSketchLoader {
 //			runFromCmdLine(args);
 //		} else {
 			// run from eclipse for dev
-//			new NordicSketchLoader().process("/Users/andrew/Documents/dev/ardruino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
-			new NordicSketchLoader().process("/Users/andrew/Documents/dev/ardruino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+//			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
 //		}
 	}
 }

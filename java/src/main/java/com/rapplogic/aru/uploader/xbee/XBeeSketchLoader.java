@@ -1,20 +1,20 @@
 /**
  * Copyright (c) 2015 Andrew Rapp. All rights reserved.
  *
- * This file is part of ardruino-remote-uploader
+ * This file is part of arduino-remote-uploader
  *
- * ardruino-remote-uploader is free software: you can redistribute it and/or modify
+ * arduino-remote-uploader is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * ardruino-remote-uploader is distributed in the hope that it will be useful,
+ * arduino-remote-uploader is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with ardruino-remote-uploader.  If not, see <http://www.gnu.org/licenses/>.
+ * along with arduino-remote-uploader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 package com.rapplogic.aru.uploader.xbee;
@@ -285,8 +285,8 @@ public class XBeeSketchLoader extends SketchUploader {
 			runFromCmdLine(args);
 		} else {
 			// run from eclipse for dev
-			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/ardruino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
-//			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/ardruino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
+			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
+//			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
 		}
 	}
 }
