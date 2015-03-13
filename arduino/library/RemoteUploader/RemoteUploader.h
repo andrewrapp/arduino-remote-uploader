@@ -29,11 +29,12 @@
 // how long to wait for a reply from optiboot before timeout (ms)
 #define OPTIBOOT_READ_TIMEOUT 1000
 
+#define PROG_PAGE_SIZE 128
 // this can be reduced to the maximum packet size + header bytes
 // memory shouldn't be an issue on the programmer since it only should ever run this sketch!
 
-#define BUFFER_SIZE 150
-#define READ_BUFFER_SIZE 150
+#define BUFFER_SIZE PROG_PAGE_SIZE + 3
+#define READ_BUFFER_SIZE PROG_PAGE_SIZE + 3
 
 // TODO not implemented yet
 #define PROG_PAGE_RETRIES 2
@@ -63,23 +64,21 @@
 
 #define VERSION = 1;
 
-// host reply codes
-// every packet must return exactly one reply: OK or ERROR. is anything > OK
+// error codes returned by handlePacket
+// every packet must return exactly one reply: OK or NOT OK. NOT OK is anything > 1
 // TODO make sure only one reply code is sent!
-// timeout should be the only reply that is not sent immediately after rx packet received
 #define OK 1
 //got prog data but no start. host needs to start over
 #define START_OVER 2
 #define TIMEOUT 3
-#define FLASH_ERROR 0x82
-#define EEPROM_ERROR 0x80
-#define EEPROM_WRITE_ERROR 0x81
+#define FLASH_ERROR 4
+#define EEPROM_ERROR 5
+#define EEPROM_WRITE_ERROR 6
 // TODO these should be bit sets on FLASH_ERROR
-#define EEPROM_READ_ERROR 0xb1
+#define EEPROM_READ_ERROR 7
 // serial lines not connected or reset pin not connected
-#define NOBOOTLOADER_ERROR 0xc1
-#define BOOTLOADER_REPLY_TIMEOUT 0xc2
-#define BOOTLOADER_UNEXPECTED_REPLY 0xc3
+#define NOBOOTLOADER_ERROR 8
+#define VERIFY_PAGE_ERROR 9
 
 // STK CONSTANTS
 #define STK_OK              0x10

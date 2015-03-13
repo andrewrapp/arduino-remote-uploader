@@ -90,14 +90,7 @@ Flashed in 1571ms
 
 
 
-
-
-
-
-
-
-
-// TODO camelcase it
+// TODO review error codes and handling
 
 
 RemoteUploader::RemoteUploader() {
@@ -298,7 +291,7 @@ int RemoteUploader::flashInit() {
     
     if (dataLen == -1) {
      // seems that we're not talking to the bootloader
-     //sendReply(NOBOOTLOADER_ERROR);
+     // TODO NOBOOTLOADER_ERROR
      return -1;   
     }
     
@@ -514,10 +507,10 @@ int RemoteUploader::flash(int startAddress, int size) {
   while (currentAddress < (size + EEPROM_OFFSET_ADDRESS)) {
     int len = 0;
     
-    if ((size + EEPROM_OFFSET_ADDRESS) - currentAddress < 128) {
+    if ((size + EEPROM_OFFSET_ADDRESS) - currentAddress < PROG_PAGE_SIZE) {
       len = (size + EEPROM_OFFSET_ADDRESS) - currentAddress;
     } else {
-      len = 128;
+      len = PROG_PAGE_SIZE;
     }
     
     #if (VERBOSE && DEBUG)
@@ -532,7 +525,7 @@ int RemoteUploader::flash(int startAddress, int size) {
         getDebugSerial()->println("EEPROM read fail");
       #endif
       
-      //sendReply(EEPROM_READ_ERROR);     
+      //TODO EEPROM_READ_ERROR
       return -1;
     }
     
@@ -589,7 +582,6 @@ bool RemoteUploader::isFlashPacket(uint8_t packet[]) {
   return false;
 }
 
-// not specific to the transport
 // process packet and return reply code for host
 int RemoteUploader::handlePacket(uint8_t packet[]) {
     // if programming start magic packet is received:
