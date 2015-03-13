@@ -124,7 +124,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 	}
 
 	private void writePacket(int[] data) throws IOException {
-		System.out.println("Writing packet " + toHex(data));
+		//System.out.println("Writing packet " + toHex(data));
 		
 		for (int i = 0; i < data.length; i++) {
 			write(data[i]);
@@ -141,7 +141,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 			
 			long start = System.currentTimeMillis();
 			
-			System.out.println("Sending sketch to nordic radio via Serial2SPI sketch, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet");			
+			System.out.println("Sending sketch to nordic radio via Serial2SPI sketch, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));			
 
 			writePacket(getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage()));
 			
@@ -199,8 +199,8 @@ public class NordicSketchLoader extends SerialSketchLoader {
 //			runFromCmdLine(args);
 //		} else {
 			// run from eclipse for dev
-			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
-			//new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+//			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-sketcher/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
 //		}
 	}
 }
