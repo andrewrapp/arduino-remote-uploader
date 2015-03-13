@@ -22,7 +22,8 @@
 #include <SPI.h>
 #include "nRF24L01.h"
 #include "RF24.h"
-#include <EEPROMFlasher.h>
+
+#include <RemoteUploader.h>
 
 #define PROXY_SERIAL false
 
@@ -45,9 +46,14 @@ const uint64_t pipes[2] = { baseAddress, baseAddress + 1 };
 
 uint8_t packet[NORDIC_PACKET_SIZE];
 
+RemoteUploader remoteUploader = RemoteUploader();
+extEEPROM eeprom = extEEPROM(kbits_256, 1, 64);
+
 void setup() {
-  // leonardo - use UART (serial1)
-  int setup = setupEepromFlasher(&Serial1, 9);
+  // use leonardo (serial1)
+  remoteUploader.setup(&Serial1, &eeprom, 9);
+  // use usb-serial for debug
+  //remoteUploader.setDebugSerial(&Serial);
   
   radio.begin();
   radio.setChannel(0x8);
@@ -79,9 +85,7 @@ int sendReply(uint8_t status) {
   int success = 0;
   
   if (!ok) {
-    #if (USBDEBUG || NSSDEBUG) 
-      getDebugSerial()->println("ACK TX fail");
-    #endif 
+    remoteUploader.getDebugSerial()->println("ACK TX fail");
     success = -1;
   }
   
@@ -99,18 +103,16 @@ void loop() {
         done = radio.read(packet, NORDIC_PACKET_SIZE);
       }
       
-      if (isProgrammingPacket(packet, 32)) {
-        #if (USBDEBUG || NSSDEBUG)        
-          //dump_buffer(packet, "Received packet", NORDIC_PACKET_SIZE);
-        #endif         
+      if (remoteUploader.isProgrammingPacket(packet, 32)) {
+        //dump_buffer(packet, "Received packet", NORDIC_PACKET_SIZE);
         
-        int response = handlePacket(packet);
+        int response = remoteUploader.handlePacket(packet);
         
         if (response != OK) {
-          prog_reset();
+          remoteUploader.reset();
         }
         
-        if (isFlashPacket(packet)) {
+        if (remoteUploader.isFlashPacket(packet)) {
           if (PROXY_SERIAL) {
             // revert serial speed if we are proxying
           }

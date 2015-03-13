@@ -1,3 +1,6 @@
+#ifndef RemoteUploader_h
+#define RemoteUploader_h
+
 #if defined(ARDUINO) && ARDUINO >= 100
 	#include "Arduino.h"
 #else
@@ -8,33 +11,23 @@
 #include <SoftwareSerial.h>
 #include <extEEPROM.h>
 
+// Enable debugging statments on any arduino that has multiple serial ports. Must also call setDebugSerial()
+// Never set to Serial on atmega328/168 as it needs Serial for programming and it will certainly fail on flash()
+// IMPORTANT: you must have the serial monitor open when usb debug enabled or will fail after a few packets!
+#define DEBUG true
+
+// Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
+// Must also enable a debug option (DEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing
+#define VERBOSE false
+
 // The remaining config should be fine for vast majority of cases
 // Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
-// Must also enable a debug option (USBDEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing
-#define VERBOSE false
-#define DEBUG_BAUD_RATE 19200
-#define USBDEBUG false
+// Must also enable a debug option (DEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing
 
 // only 115200 works with optiboot
 #define OPTIBOOT_BAUD_RATE 115200
 // how long to wait for a reply from optiboot before timeout (ms)
 #define OPTIBOOT_READ_TIMEOUT 1000
-
-// Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
-// Must also enable a debug option (USBDEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing
-#define VERBOSE false
-#define DEBUG_BAUD_RATE 19200
-// WARNING: never set this to true for a atmega328/168 as it needs Serial(0) for programming. If you do it will certainly fail on flash()
-// Only true for Leonardo (defaults to Serial(0) for debug) 
-// IMPORTANT: you must have the serial monitor open when usb debug enabled or will fail after a few packets!
-#define USBDEBUG false
-// UNTESTED!
-#define NSSDEBUG false
-#define NSSDEBUG_TX 6
-#define NSSDEBUG_RX 7
-
-// NOTE: ONLY SET THIS TRUE FOR TROUBLESHOOTING. FLASHING IS NOT POSSIBLE IF SET TO TRUE
-#define USE_SERIAL_FOR_DEBUG false
 
 // this can be reduced to the maximum packet size + header bytes
 // memory shouldn't be an issue on the programmer since it only should ever run this sketch!
@@ -103,19 +96,20 @@
 class RemoteUploader {
 public:
 	RemoteUploader();
-	HardwareSerial* getProgrammerSerial();
 	void dumpBuffer(uint8_t arr[], char context[], uint8_t len);	
 	int handlePacket(uint8_t packet[]);
 	int setup(HardwareSerial* _serial, extEEPROM* _eeprom, uint8_t _resetPin);
 	bool inProgrammingMode();
 	long getLastPacketMillis();
 	void reset();
-	// can only use USBDEBUG with Leonardo or other variant that supports multiple serial ports
-	#if (USBDEBUG || NSSDEBUG)
-	  Stream* getDebugSerial();
-	#endif	
 	bool isProgrammingPacket(uint8_t packet[], uint8_t packet_length);
-	bool isFlashPacket(uint8_t packet[]);	  
+	bool isFlashPacket(uint8_t packet[]);
+	HardwareSerial* getProgrammerSerial();
+	// can only use DEBUG with Leonardo or other variant that supports multiple serial ports
+	#if (DEBUG)
+	  Stream* getDebugSerial();
+	  void setDebugSerial(Stream* debugSerial);
+	#endif	
 private:
 	void clearRead();
 	int readOptibootReply(uint8_t len, int timeout);
@@ -130,19 +124,12 @@ private:
 	// For atmega328 use Serial
 	// For megas other e.g. Serial2 should work -- UNTESTED!
 	HardwareSerial* progammerSerial;
-	HardwareSerial* debugSerial;
-
-	#if (NSSDEBUG) 
-	  SoftwareSerial nssDebug;
-	#endif
-
+	Stream* debugSerial;
 	uint8_t cmd_buffer[1];
 	uint8_t addr[2];
-
 	// TODO revisit these sizes
 	uint8_t buffer[BUFFER_SIZE];
 	uint8_t readBuffer[READ_BUFFER_SIZE];
-
 	uint8_t resetPin;
 	int packetCount;
 	int numPackets;
@@ -152,3 +139,5 @@ private:
 	long lastUpdateAtMillis;
 	int currentEEPROMAddress;
 };
+
+#endif // guard

@@ -30,7 +30,7 @@
 
 
 
-// Leonardo (usb-serial) is required for USBDEBUG. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true and it fails in unexpected ways! :(
+// Leonardo (usb-serial) is required for DEBUG. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true and it fails in unexpected ways! :(
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
 
 // WIRING:
@@ -124,6 +124,17 @@ HardwareSerial* RemoteUploader::getProgrammerSerial() {
   return progammerSerial;
 }
 
+#if (DEBUG)
+  Stream* RemoteUploader::getDebugSerial() {
+    return debugSerial;
+  }
+
+  void RemoteUploader::setDebugSerial(Stream* _debugSerial) {
+    debugSerial = _debugSerial;
+  }
+#endif
+
+
 void RemoteUploader::clearRead() {
   int count = 0;
   while (getProgrammerSerial()->available() > 0) {
@@ -132,7 +143,7 @@ void RemoteUploader::clearRead() {
   }
   
   if (count > 0) {
-    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
+    #if (VERBOSE && DEBUG)
       getDebugSerial()->print("clearRead: trashed "); getDebugSerial()->print(count, DEC); getDebugSerial()->println(" bytes");
     #endif
   }
@@ -170,7 +181,7 @@ int RemoteUploader::readOptibootReply(uint8_t len, int timeout) {
     return pos;
   } else {
     // TODO return error code instead of strings that take up precious memeory
-    #if (USBDEBUG || NSSDEBUG)
+    #if (DEBUG)
       getDebugSerial()->print("read timeout! got "); getDebugSerial()->print(pos, DEC); getDebugSerial()->print(" byte, expected "); getDebugSerial()->print(len, DEC); getDebugSerial()->println(" bytes");
     #endif
   
@@ -180,7 +191,7 @@ int RemoteUploader::readOptibootReply(uint8_t len, int timeout) {
 }
 
 void RemoteUploader::dumpBuffer(uint8_t arr[], char context[], uint8_t len) {
-  #if (USBDEBUG || NSSDEBUG)
+  #if (DEBUG)
     getDebugSerial()->print(context);
     getDebugSerial()->print(": ");
   
@@ -201,7 +212,7 @@ void RemoteUploader::dumpBuffer(uint8_t arr[], char context[], uint8_t len) {
 // success >= 0, otherwise error code
 int RemoteUploader::sendToOptiboot(uint8_t command, uint8_t *arr, uint8_t len, uint8_t responseLength) {
 
-    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
+    #if (VERBOSE && DEBUG)
       getDebugSerial()->print("send() command: "); getDebugSerial()->println(command, HEX);
     #endif
     
@@ -212,7 +223,7 @@ int RemoteUploader::sendToOptiboot(uint8_t command, uint8_t *arr, uint8_t len, u
       getProgrammerSerial()->write(arr[i]);   
     }
     
-    #if (VERBOSE && (USBDEBUG || NSSDEBUG)) 
+    #if (VERBOSE && DEBUG) 
       dumpBuffer(arr, "send->", len);
     #endif
   }
@@ -239,7 +250,7 @@ int RemoteUploader::sendToOptiboot(uint8_t command, uint8_t *arr, uint8_t len, u
   }
 
   if (replyLen < 2) {
-    #if (USBDEBUG || NSSDEBUG) 
+    #if (DEBUG) 
       getDebugSerial()->println("Invalid response");
     #endif
  
@@ -247,7 +258,7 @@ int RemoteUploader::sendToOptiboot(uint8_t command, uint8_t *arr, uint8_t len, u
   }
 
   if (readBuffer[0] != STK_INSYNC) {
-    #if (USBDEBUG || NSSDEBUG)
+    #if (DEBUG)
       getDebugSerial()->print("No STK_INSYNC"); //getDebugSerial()->println(readBuffer[0], HEX);
     #endif
 
@@ -255,7 +266,7 @@ int RemoteUploader::sendToOptiboot(uint8_t command, uint8_t *arr, uint8_t len, u
   }
   
   if (readBuffer[replyLen - 1] != STK_OK) {
-    #if (USBDEBUG || NSSDEBUG)
+    #if (DEBUG)
       getDebugSerial()->print("Expected STK_OK but was "); getDebugSerial()->println(readBuffer[replyLen - 1], HEX);
     #endif
     
@@ -291,7 +302,7 @@ int RemoteUploader::flashInit() {
      return -1;   
     }
     
-    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
+    #if (VERBOSE && DEBUG)
       getDebugSerial()->print("Firmware: "); getDebugSerial()->println(readBuffer[0], HEX);      
     #endif
 
@@ -303,7 +314,7 @@ int RemoteUploader::flashInit() {
       return -1;   
     }
 
-    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
+    #if (VERBOSE && DEBUG)
       getDebugSerial()->print("Minor: "); getDebugSerial()->println(readBuffer[0], HEX);    
     #endif
     
@@ -314,7 +325,7 @@ int RemoteUploader::flashInit() {
     if (dataLen == -1) {
       return -1;   
     } else if (readBuffer[0] != 0x3) {
-      #if (USBDEBUG || NSSDEBUG)
+      #if (DEBUG)
         getDebugSerial()->print("Unxpected optiboot reply: "); getDebugSerial()->println(readBuffer[0]);
       #endif
       return -1;
@@ -331,14 +342,14 @@ int RemoteUploader::flashInit() {
     } else if (readBuffer[0] == 0x1E && readBuffer[1] == 0x95 && readBuffer[2] == 0x14) {      
       //atmega328
     } else {
-      #if (USBDEBUG || NSSDEBUG)
+      #if (DEBUG)
         dumpBuffer(readBuffer, "Unexpected signature: ", 3);
       #endif
 
       return -1;
     }
     
-    #if (USBDEBUG || NSSDEBUG)
+    #if (DEBUG)
       getDebugSerial()->println("Talking to Optiboot");      
     #endif
   
@@ -357,11 +368,11 @@ int RemoteUploader::sendPageToOptiboot(uint8_t *addr, uint8_t *buf, uint8_t data
     // address is byte index 2,3
     
     // retry up to 2 times
-    // disable retries for DEBUGging
+    // disable retries for debugging
     //for (int z = 0; z < PROG_PAGE_RETRIES + 1; z++) {
       // [55] . [00] . [00] 
       if (sendToOptiboot(STK_LOAD_ADDRESS, addr, 2, 0) == -1) {
-        #if (USBDEBUG || NSSDEBUG) 
+        #if (DEBUG) 
           getDebugSerial()->println("Load address failed");          
         #endif
 
@@ -380,7 +391,7 @@ int RemoteUploader::sendPageToOptiboot(uint8_t *addr, uint8_t *buf, uint8_t data
       
       // add 3 to dataLen
       if (sendToOptiboot(STK_PROG_PAGE, buffer, dataLen + 3, 0) == -1) {
-        #if (USBDEBUG || NSSDEBUG) 
+        #if (DEBUG) 
           getDebugSerial()->println("Prog page failed");
         #endif        
         return -1;
@@ -389,14 +400,14 @@ int RemoteUploader::sendPageToOptiboot(uint8_t *addr, uint8_t *buf, uint8_t data
       uint8_t replyLen = sendToOptiboot(STK_READ_PAGE, buffer, 3, dataLen);
       
       if (replyLen == -1) {
-        #if (USBDEBUG || NSSDEBUG) 
+        #if (DEBUG) 
           getDebugSerial()->println("Read page failure");
         #endif          
         return -1;
       }
       
       if (replyLen != dataLen) {
-        #if (USBDEBUG || NSSDEBUG) 
+        #if (DEBUG) 
           getDebugSerial()->println("Read page len fail");
         #endif
         return -1;
@@ -404,7 +415,7 @@ int RemoteUploader::sendPageToOptiboot(uint8_t *addr, uint8_t *buf, uint8_t data
       
       // TODO we can compute checksum on buffer, reset and use for the read buffer!!!!!!!!!!!!!!!
       
-      #if (VERBOSE && (USBDEBUG || NSSDEBUG))
+      #if (VERBOSE && DEBUG)
         getDebugSerial()->print("Read page length is "); getDebugSerial()->println(replyLen, DEC);      
       #endif
       
@@ -413,7 +424,7 @@ int RemoteUploader::sendPageToOptiboot(uint8_t *addr, uint8_t *buf, uint8_t data
       // verify each byte written matches what is returned by bootloader
       for (int i = 0; i < replyLen; i++) {        
         if (readBuffer[i] != buffer[i + 3]) {
-          #if (USBDEBUG || NSSDEBUG)
+          #if (DEBUG)
             getDebugSerial()->print("Verify page fail @ "); getDebugSerial()->println(i, DEC);
           #endif
           verified = false;
@@ -426,7 +437,7 @@ int RemoteUploader::sendPageToOptiboot(uint8_t *addr, uint8_t *buf, uint8_t data
         //if (z < PROG_PAGE_RETRIES) {
         //  getDebugSerial()->println("Failed to verify page.. retrying");
         //} else {
-          #if (USBDEBUG || NSSDEBUG) 
+          #if (DEBUG) 
             getDebugSerial()->println("Verify page fail");
           #endif            
         //}
@@ -459,7 +470,7 @@ void RemoteUploader::bounce() {
     //clearRead();
 
     // Bounce the reset pin
-    #if (USBDEBUG || NSSDEBUG) 
+    #if (DEBUG) 
       getDebugSerial()->println("Bouncing the Arduino");
     #endif      
  
@@ -476,14 +487,14 @@ int RemoteUploader::flash(int startAddress, int size) {
   // now read from eeprom and program  
   long start = millis();
   
-  #if (USBDEBUG || NSSDEBUG) 
+  #if (DEBUG) 
     getDebugSerial()->println("Flashing from eeprom...");
   #endif
 
   bounce();
           
   if (flashInit() != 0) {
-    #if (USBDEBUG || NSSDEBUG) 
+    #if (DEBUG) 
       getDebugSerial()->println("Check failed!");
     #endif
     reset();
@@ -491,7 +502,7 @@ int RemoteUploader::flash(int startAddress, int size) {
   } 
     
   if (sendToOptiboot(STK_ENTER_PROGMODE, buffer, 0, 0) == -1) {
-    #if (USBDEBUG || NSSDEBUG) 
+    #if (DEBUG) 
       getDebugSerial()->println("STK_ENTER_PROGMODE failure");
     #endif  
     
@@ -509,7 +520,7 @@ int RemoteUploader::flash(int startAddress, int size) {
       len = 128;
     }
     
-    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
+    #if (VERBOSE && DEBUG)
       getDebugSerial()->print("EEPROM read at address "); getDebugSerial()->print(currentAddress, DEC); getDebugSerial()->print(" len is "); getDebugSerial()->println(len, DEC);
     #endif
      
@@ -517,7 +528,7 @@ int RemoteUploader::flash(int startAddress, int size) {
     int ok = eeprom->read(currentAddress, buffer + 3, len);
     
     if (ok != 0) {
-      #if (USBDEBUG || NSSDEBUG) 
+      #if (DEBUG) 
         getDebugSerial()->println("EEPROM read fail");
       #endif
       
@@ -530,13 +541,13 @@ int RemoteUploader::flash(int startAddress, int size) {
     addr[0] = ((currentAddress - startAddress) / 2) & 0xff;
     addr[1] = (((currentAddress - startAddress) / 2) >> 8) & 0xff;
     
-    #if (VERBOSE && (USBDEBUG || NSSDEBUG))
+    #if (VERBOSE && DEBUG)
       getDebugSerial()->print("send page len: "); getDebugSerial()->println(len, DEC);            
       dumpBuffer(buffer + 3, "read from eeprom->", len);
     #endif
                   
     if (sendPageToOptiboot(addr, buffer, len) == -1) {
-      #if (USBDEBUG || NSSDEBUG) 
+      #if (DEBUG) 
         getDebugSerial()->println("send page fail");
       #endif  
 
@@ -547,7 +558,7 @@ int RemoteUploader::flash(int startAddress, int size) {
   }
   
   if (sendToOptiboot(STK_LEAVE_PROGMODE, buffer, 0, 0) == -1) {
-    #if (USBDEBUG || NSSDEBUG) 
+    #if (DEBUG) 
       getDebugSerial()->println("STK_LEAVE_PROGMODE failure");
     #endif  
 
@@ -555,7 +566,7 @@ int RemoteUploader::flash(int startAddress, int size) {
   }
   
   // SUCCESS!!
-  #if (USBDEBUG || NSSDEBUG)
+  #if (DEBUG)
     getDebugSerial()->print("Flashed in "); getDebugSerial()->print(millis() - start, DEC); getDebugSerial()->println("ms");
   #endif
       
@@ -587,26 +598,26 @@ int RemoteUploader::handlePacket(uint8_t packet[]) {
     // NOTE: any programs that send to this radio should be shutdown or the programming would hose the arduino
     // on final packet do any verification to see if it boots
 
-//    #if (USBDEBUG || NSSDEBUG) 
+//    #if (DEBUG) 
 //      dumpBuffer(packet, "packet", packetLength);
 //    #endif
         
       // 3 bytes for head + at least one programming
       // TODO also check rx.getData(2) is one of CONTROL_PROG_X for extra measure of ensuring we are not acting on a application packet
         // echo * for each programming packet
-        #if (USBDEBUG || NSSDEBUG) 
+        #if (DEBUG) 
           getDebugSerial()->print("*");
         #endif
       
         if (packet[2] == CONTROL_PROG_REQUEST) {
          // start
-          #if (USBDEBUG || NSSDEBUG) 
+          #if (DEBUG) 
             getDebugSerial()->println("Received start packet");
           #endif  
           
           if (inProgramming) {
             // TODO print warning: already in prog. reset and continue
-            #if (USBDEBUG || NSSDEBUG) 
+            #if (DEBUG) 
               getDebugSerial()->println("Error: in prog");
             #endif
           }
@@ -653,13 +664,13 @@ int RemoteUploader::handlePacket(uint8_t packet[]) {
 
           // check if the address of this packet aligns with the last write to eeprom. it could be a resend and that's ok
           if (currentEEPROMAddress < (address + EEPROM_OFFSET_ADDRESS)) {
-            #if (USBDEBUG || NSSDEBUG)
+            #if (DEBUG)
               getDebugSerial()->print("WARN: expected address "); getDebugSerial()->print(currentEEPROMAddress, DEC); getDebugSerial()->print(" but got "); getDebugSerial()->println(address + EEPROM_OFFSET_ADDRESS, DEC);
             #endif
           } else if (currentEEPROMAddress > (address + EEPROM_OFFSET_ADDRESS)) {
             // attempt to write beyond current eeprom address
             // this would result in a gap in data and would ultimately fail, so reject
-            #if (USBDEBUG || NSSDEBUG)
+            #if (DEBUG)
               getDebugSerial()->print("ERROR: attempt to write @ address "); getDebugSerial()->print((address + EEPROM_OFFSET_ADDRESS) & 0xff, DEC); getDebugSerial()->print(" but current address @ "); getDebugSerial()->println(currentEEPROMAddress & 0xff, DEC);            
             #endif
             
@@ -670,7 +681,7 @@ int RemoteUploader::handlePacket(uint8_t packet[]) {
           // TODO validate it's in range            
           currentEEPROMAddress = address + EEPROM_OFFSET_ADDRESS;
 
-//          #if (USBDEBUG || NSSDEBUG)
+//          #if (DEBUG)
 //            getDebugSerial()->print("curaddr "); getDebugSerial()->println(currentEEPROMAddress, DEC); 
 //          #endif
 
@@ -679,7 +690,7 @@ int RemoteUploader::handlePacket(uint8_t packet[]) {
           uint8_t dataLen = packetLen - PROG_DATA_HEADER_SIZE;
             
           if (eeprom->write(currentEEPROMAddress, packet + PROG_DATA_HEADER_SIZE, dataLen) != 0) {
-            #if (USBDEBUG || NSSDEBUG) 
+            #if (DEBUG) 
               getDebugSerial()->println("EEPROM write failure");
             #endif  
             
@@ -688,7 +699,7 @@ int RemoteUploader::handlePacket(uint8_t packet[]) {
           
           currentEEPROMAddress+= dataLen;
 
-//          #if (USBDEBUG || NSSDEBUG)
+//          #if (DEBUG)
 //            getDebugSerial()->print("len is "); getDebugSerial()->println(len, DEC);
 //            getDebugSerial()->print("addr+len "); getDebugSerial()->println(currentEEPROMAddress, DEC); 
 //          #endif
@@ -709,12 +720,12 @@ int RemoteUploader::handlePacket(uint8_t packet[]) {
 //        (progSize >> 8) & 0xff, 
 //        progSize & 0xff
 
-          #if (USBDEBUG || NSSDEBUG) 
+          #if (DEBUG) 
             getDebugSerial()->println("");
           #endif  
 
         // debug remove
-        #if (USBDEBUG || NSSDEBUG) 
+        #if (DEBUG) 
           getDebugSerial()->println("Flash start packet");
         #endif
         
@@ -723,13 +734,13 @@ int RemoteUploader::handlePacket(uint8_t packet[]) {
           int psize = (packet[4] << 8) + packet[5];
                     
           if (psize != currentEEPROMAddress - EEPROM_OFFSET_ADDRESS) {
-            #if (USBDEBUG || NSSDEBUG) 
+            #if (DEBUG) 
               getDebugSerial()->print("psize "); getDebugSerial()->print(psize, HEX); getDebugSerial()->print(",cur addr "); getDebugSerial()->println(currentEEPROMAddress - EEPROM_OFFSET_ADDRESS, HEX);
             #endif              
             // TODO make codes more explicit
             return START_OVER;             
           } else if (psize != programSize) {
-            #if (USBDEBUG || NSSDEBUG) 
+            #if (DEBUG) 
               getDebugSerial()->println("psize != programSize");
             #endif              
             
@@ -740,7 +751,7 @@ int RemoteUploader::handlePacket(uint8_t packet[]) {
           getProgrammerSerial()->begin(OPTIBOOT_BAUD_RATE);
   
           if (flash(EEPROM_OFFSET_ADDRESS, programSize) != 0) {
-            #if (USBDEBUG || NSSDEBUG)
+            #if (DEBUG)
               getDebugSerial()->println("Flash failure");
             #endif              
             return FLASH_ERROR;
@@ -751,7 +762,7 @@ int RemoteUploader::handlePacket(uint8_t packet[]) {
         } else {
           // sync error, not expecting prog data   
           // TODO send error. client needs to start over
-          #if (USBDEBUG || NSSDEBUG) 
+          #if (DEBUG) 
             getDebugSerial()->println("not-in-prog");
           #endif  
           
@@ -763,56 +774,22 @@ int RemoteUploader::handlePacket(uint8_t packet[]) {
         return OK;
 }
 
-// can only use USBDEBUG with Leonardo or other variant that supports multiple serial ports
-#if (USBDEBUG)
-  Stream* RemoteUploader::getDebugSerial() {
-    return &Serial;  
-  }
-#elif (NSSDEBUG) 
-  Stream* RemoteUploader::getDebugSerial() {
-    return &nssDebug;  
-  }
-#endif
-
 int RemoteUploader::setup(HardwareSerial* _serial, extEEPROM* _eeprom, uint8_t _resetPin) {
   eeprom = _eeprom;
-
-  #if (NSSDEBUG) 
-    nssDebug(NSSDEBUG_TX, NSSDEBUG_RX);
-  #endif
-
   progammerSerial = _serial;
-  resetPin = _resetPin;
-   
-   // leonardo wait for serial
-  #if (USBDEBUG)
-    // start usb serial on leonardo for DEBUGging
-    // usb-serial @19200 could go higher  
-    // TODO use getDebugSerial or variable
-    Serial.begin(DEBUG_BAUD_RATE);    
-    // only necessary for leonardo. safe for others
-    while (!Serial);
-  #elif (NSSDEBUG) 
-    nssDebug.begin(DEBUG_BAUD_RATE);
-  #endif
-  
+  resetPin = _resetPin;      
   pinMode(resetPin, OUTPUT);
-  
-  // optiboot is 115.2K
-  // Start with 9600 for xbee
-  // then switch to 115.2 for flashing for Optiboot
-  // this is a terrible idea, only use as final act of desparation!
-  #if (!USE_SERIAL_FOR_DEBUG)
-    getProgrammerSerial()->begin(DEBUG_BAUD_RATE);
-  #endif
 
   if (eeprom->begin(twiClock400kHz) != 0) {
-    #if (USBDEBUG || NSSDEBUG) 
+    #if (DEBUG) 
       getDebugSerial()->println("eeprom failure");
     #endif  
     
     return EEPROM_ERROR;
   } 
+  
+  // only necessary for leonardo. safe for others
+  while (!Serial);
   
   return 0;
 }
