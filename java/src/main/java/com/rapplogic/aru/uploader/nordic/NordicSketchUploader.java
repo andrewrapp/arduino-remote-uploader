@@ -34,17 +34,18 @@ import java.util.concurrent.locks.ReentrantLock;
 import org.apache.log4j.Logger;
 
 import com.google.common.collect.Maps;
-import com.rapplogic.aru.uploader.serial.SerialSketchLoader;
+import com.rapplogic.aru.uploader.serial.SerialSketchUploader;
 import com.rapplogic.xbee.api.XBeeException;
 
 /**
+ * Uploads sketch to Nordic via the NordicSerialToSPI Sketch
  * 
  * @author andrew
  *
  */
-public class NordicSketchLoader extends SerialSketchLoader {
+public class NordicSketchUploader extends SerialSketchUploader {
 	
-	final Logger log = Logger.getLogger(NordicSketchLoader.class);
+	final Logger log = Logger.getLogger(NordicSketchUploader.class);
 	
 	final ReentrantLock lock = new ReentrantLock();
 	final Condition replyCondition = lock.newCondition();
@@ -53,7 +54,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 	
 	private final int NORDIC_PAGE_SIZE = 26;
 	
-	public NordicSketchLoader() {
+	public NordicSketchUploader() {
 		super();
 	}
 
@@ -148,7 +149,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 //		} else {
 			// run from eclipse for dev
 //			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
-			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
+			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
 //		}
 	}
 

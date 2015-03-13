@@ -56,7 +56,7 @@ import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse.DeliveryStatus;
  * @author andrew
  *
  */
-public class XBeeSketchLoader extends SketchUploader {
+public class XBeeSketchUploader extends SketchUploader {
 	
 	final List<Integer> messages = Lists.newArrayList();
 		
@@ -69,7 +69,7 @@ public class XBeeSketchLoader extends SketchUploader {
 	final ReentrantLock lock = new ReentrantLock();
 	final Condition rxPacketCondition = lock.newCondition();
 	
-	public XBeeSketchLoader() {
+	public XBeeSketchUploader() {
 		super();
 	}
 	
@@ -163,7 +163,7 @@ public class XBeeSketchLoader extends SketchUploader {
 		}
 		
 		// cmd line
-		new XBeeSketchLoader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), baud, cmd.getOptionValue(xbeeAddress), verbose, timeout);
+		new XBeeSketchUploader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), baud, cmd.getOptionValue(xbeeAddress), verbose, timeout);
 	}
 	
 	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
@@ -173,7 +173,7 @@ public class XBeeSketchLoader extends SketchUploader {
 			runFromCmdLine(args);
 		} else {
 			// run from eclipse for dev
-			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
+			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
 //			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5);
 		}
 	}
