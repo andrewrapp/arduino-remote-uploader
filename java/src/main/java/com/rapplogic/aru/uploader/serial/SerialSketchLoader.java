@@ -23,7 +23,7 @@ import com.rapplogic.aru.uploader.SketchUploader;
  * @author andrew
  *
  */
-public class SerialSketchLoader extends SketchUploader implements SerialPortEventListener {
+public abstract class SerialSketchLoader extends SketchUploader implements SerialPortEventListener {
 
 	final int FIRST_PAGE = 0xd;
 	final int LAST_PAGE = 0xf;
@@ -200,10 +200,5 @@ public class SerialSketchLoader extends SketchUploader implements SerialPortEven
 	
 	public SerialPort getSerialPort() {
 		return serialPort;
-	}
-
-	// of course you can't use the arduino serial monitor with this since it needs exclusive access to the usb-serial port
-	public static void main(String[] args) throws Exception {		
-		new SerialSketchLoader().process(args[0], args[1]);
 	}
 }

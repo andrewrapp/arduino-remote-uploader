@@ -19,22 +19,26 @@
 
 package com.rapplogic.aru.uploader;
 
+import java.io.IOException;
 import java.util.Arrays;
+import java.util.Map;
 
-import org.apache.log4j.ConsoleAppender;
-import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
-import org.apache.log4j.PatternLayout;
 
+import com.rapplogic.aru.core.Page;
+import com.rapplogic.aru.core.Sketch;
 import com.rapplogic.aru.core.SketchCore;
 
 /**
- * Parses a intel hex AVR/Arduino Program into an object representation with a user defined page-size
+ * Defines framework for uploading sketch to remote
  * 
  * @author andrew
  *
  */
-public class SketchUploader extends SketchCore {
+public abstract class SketchUploader extends SketchCore {
+	
+	final Logger log = Logger.getLogger(SketchUploader.class);
+	
 	public final int MAGIC_BYTE1 = 0xef;
 	public final int MAGIC_BYTE2 = 0xac;
 	// make enum
@@ -93,17 +97,77 @@ public class SketchUploader extends SketchCore {
 		System.arraycopy(b, 0, result, a.length, b.length);
 		return result;
 	}
+
+	protected abstract void open(Map<String,Object> context) throws Exception;
+	protected abstract void writeData(int[] data, Map<String,Object> context) throws Exception;
+	protected abstract void waitForAck(int timeout) throws Exception;
+	protected abstract void close() throws Exception;
+	protected abstract String getName();
 	
-	protected static void initLog4j() {
-		  ConsoleAppender console = new ConsoleAppender();
-		  String PATTERN = "%d [%p|%c|%C{1}] %m%n";
-		  console.setLayout(new PatternLayout(PATTERN)); 
-		  console.activateOptions();
-		  // only log this package
-		  Logger.getLogger(SketchUploader.class.getPackage().getName()).addAppender(console);
-		  Logger.getLogger(SketchUploader.class.getPackage().getName()).setLevel(Level.ERROR);
-		  Logger.getRootLogger().addAppender(console);
-		  // quiet logger
-		  Logger.getRootLogger().setLevel(Level.ERROR);
+	// TODO put into superclass
+	public void process(String file, int pageSize, int timeout, boolean verbose, Map<String,Object> context) throws IOException {
+		// page size is max packet size for the radio
+		Sketch sketch = parseSketchFromIntelHex(file, pageSize);
+			
+		context.put("verbose", verbose);
+		
+		try {
+			open(context);
+			
+			long start = System.currentTimeMillis();
+			
+			System.out.println("Sending sketch to " + getName() + " radio, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));			
+
+			writeData(getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage()), context);
+			
+			waitForAck(timeout);
+			
+			for (Page page : sketch.getPages()) {				
+				// make sure we exit on a kill signal like a good app
+				if (Thread.currentThread().isInterrupted()) {
+					throw new InterruptedException();
+				}
+				
+				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16(), page.getData().length), page.getData());
+				
+				if (verbose) {
+					System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
+//					System.out.println("Data " + toHex(page.getData()));
+				} else {
+					System.out.print(".");
+				}
+
+				try {
+					writeData(data, context);					
+				} catch (Exception e) {
+					throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size(), e);
+				}
+				
+				// don't send next page until this one is processed or we will overflow the buffer
+				waitForAck(timeout);
+			}
+
+			if (!verbose) {
+				System.out.println("");
+			}
+
+			System.out.println("Sending flash start packet " + toHex(getFlashStartHeader(sketch.getSize())));
+			
+			writeData(getFlashStartHeader(sketch.getSize()), context);
+			
+			waitForAck(timeout);
+			
+			System.out.println("Successfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
+		} catch (InterruptedException e) {
+			// kill signal
+			System.out.println("Interrupted during programming.. exiting");
+			return;
+		} catch (Exception e) {
+			log.error("Unexpected error", e);
+		} finally {
+			try {
+				close();
+			} catch (Exception e) {}
+		}
 	}
 }

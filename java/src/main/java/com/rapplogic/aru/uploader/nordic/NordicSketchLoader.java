@@ -25,6 +25,7 @@ import gnu.io.UnsupportedCommOperationException;
 
 import java.io.IOException;
 import java.text.ParseException;
+import java.util.Map;
 import java.util.TooManyListenersException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
@@ -32,8 +33,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.log4j.Logger;
 
-import com.rapplogic.aru.core.Page;
-import com.rapplogic.aru.core.Sketch;
+import com.google.common.collect.Maps;
 import com.rapplogic.aru.uploader.serial.SerialSketchLoader;
 import com.rapplogic.xbee.api.XBeeException;
 
@@ -101,7 +101,7 @@ public class NordicSketchLoader extends SerialSketchLoader {
 	
 	String reply = null;
 	
-	private void waitForAck(final int timeout) throws InterruptedException {	
+	public void waitForAck(final int timeout) throws InterruptedException {	
 		lock.lockInterruptibly();
 		
 		try {
@@ -120,74 +120,24 @@ public class NordicSketchLoader extends SerialSketchLoader {
 			lock.unlock();
 		}
 	}
-
-	private void writePacket(int[] data) throws IOException {
-		//System.out.println("Writing packet " + toHex(data));
-		
-		for (int i = 0; i < data.length; i++) {
-			write(data[i]);
-		}		
+	
+	@Override
+	public void open(Map<String,Object> context) throws Exception {
+		this.openSerial((String) context.get("device"), (Integer) context.get("speed"));
 	}
 
-	// TODO put into superclass
+	@Override
+	public void close() throws Exception {
+		getSerialPort().close();
+	}
+	
 	public void process(String file, String device, int speed, String nordicAddress, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException {
-		// page size is max packet size for the radio
-		Sketch sketch = parseSketchFromIntelHex(file, NORDIC_PAGE_SIZE);
-				
-		try {
-			this.openSerial(device, 19200);
-			
-			long start = System.currentTimeMillis();
-			
-			System.out.println("Sending sketch to nordic radio via Serial2SPI sketch, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage())));			
-
-			writePacket(getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage()));
-			
-			waitForAck(timeout);
-			
-			for (Page page : sketch.getPages()) {				
-				// make sure we exit on a kill signal like a good app
-				if (Thread.currentThread().isInterrupted()) {
-					throw new InterruptedException();
-				}
-				
-				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16(), page.getData().length), page.getData());
-				
-				if (verbose) {
-					System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
-//					System.out.println("Data " + toHex(page.getData()));
-				} else {
-					System.out.print(".");
-				}
-
-				writePacket(data);
-				
-				// don't send next page until this one is processed or we will overflow the buffer
-				waitForAck(timeout);
-			}
-
-			if (!verbose) {
-				System.out.println("");
-			}
-
-			System.out.println("Sending flash start packet " + toHex(getFlashStartHeader(sketch.getSize())));
-			
-			writePacket(getFlashStartHeader(sketch.getSize()));
-			
-			waitForAck(timeout);
-			
-			System.out.println("Successfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms");
-		} catch (InterruptedException e) {
-			// kill signal
-			System.out.println("Interrupted during programming.. exiting");
-			return;
-		} catch (Exception e) {
-			log.error("Unexpected error", e);
-		} finally {
-			try {
-				getSerialPort().close();
-			} catch (Exception e) {}
-		}
+		Map<String,Object> context = Maps.newHashMap();
+		context.put("device", device);
+		context.put("speed", speed);
+		context.put("nordicAddress", nordicAddress);
+		
+		super.process(file, NORDIC_PAGE_SIZE, timeout, verbose, context);
 	}
 	
 	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException {		
@@ -200,5 +150,18 @@ public class NordicSketchLoader extends SerialSketchLoader {
 //			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
 			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
 //		}
+	}
+
+	@Override
+	protected void writeData(int[] data, Map<String, Object> context) throws Exception {
+		//System.out.println("Writing packet " + toHex(data));
+		for (int i = 0; i < data.length; i++) {
+			write(data[i]);
+		}
+	}
+
+	@Override
+	protected String getName() {
+		return "nRF24L01";
 	}
 }
