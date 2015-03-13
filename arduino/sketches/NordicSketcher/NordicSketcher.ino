@@ -53,7 +53,7 @@ void setup() {
   // use leonardo (serial1)
   remoteUploader.setup(&Serial1, &eeprom, 9);
   // use usb-serial for debug
-  //remoteUploader.setDebugSerial(&Serial);
+  remoteUploader.setDebugSerial(&Serial);
   
   radio.begin();
   radio.setChannel(0x8);
