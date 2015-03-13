@@ -1,20 +1,20 @@
 /**
  * Copyright (c) 2015 Andrew Rapp. All rights reserved.
  *
- * This file is part of arduino-sketcher
+ * This file is part of arduino-remote-uploader
  *
- * arduino-sketcher is free software: you can redistribute it and/or modify
+ * arduino-remote-uploader is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * arduino-sketcher is distributed in the hope that it will be useful,
+ * arduino-remote-uploader is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with arduino-sketcher.  If not, see <http://www.gnu.org/licenses/>.
+ * along with arduino-remote-uploader.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <RemoteUploader.h>
@@ -26,9 +26,6 @@
 #endif
 
 #include "HardwareSerial.h"
-
-
-
 
 // Leonardo (usb-serial) is required for DEBUG. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true and it fails in unexpected ways! :(
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
@@ -67,7 +64,7 @@ Arduino Pro
 VCC -> 5V regulated
 GND -> GND
 
-NOTE: when uploading a new version of the sketcher to a Pro, remember to disconnect the serial lines from other arduino or upload will fail. 
+NOTE: when uploading a new version of this firmware to a Pro, remember to disconnect the serial lines from other arduino or upload will fail. 
 Also you'll need to press the reset button if you don't have CTS connected (for auto-reset).
 Leonardo is more flexible since upload occurs over usb-serial
 
