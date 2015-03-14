@@ -107,6 +107,13 @@ public class NordicSketchUploader extends SerialSketchUploader {
 		lock.lockInterruptibly();
 		
 		try {
+			// because we only have one serial port I've adopted a simple convention to use the serial
+			// port for both debugging and control. Here's the convention:
+			// starts with OK continue with net
+			// starts with RETRY tx/no ack, try again
+			// starts with ERROR unrecoverable, fail
+			// anything else is just debug
+			
 			// keep waiting until we get ok or error, rest is debug
 			while (replyCondition.await(timeout, TimeUnit.SECONDS)) {				
 				if (reply.startsWith("OK")) {

@@ -163,6 +163,7 @@ private:
 	int maxEEPROMAddress;
 	uint8_t bytesPerPacket;
 	long programmingTimeout;
+	bool flashed;
 };
 
 #endif // guard

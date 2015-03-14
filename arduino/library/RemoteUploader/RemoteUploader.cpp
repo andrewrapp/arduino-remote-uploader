@@ -462,6 +462,7 @@ void RemoteUploader::reset() {
   lastUpdateAtMillis = 0;
   currentEEPROMAddress = EEPROM_OFFSET_ADDRESS;
   maxEEPROMAddress = currentEEPROMAddress;
+  flashed = false;
 }
 
 void RemoteUploader::bounce() {    
@@ -626,10 +627,7 @@ int RemoteUploader::process(uint8_t packet[]) {
           #endif  
           
           if (inProgramming) {
-            // TODO print warning: already in prog. reset and continue
-            #if (DEBUG) 
-              getDebugSerial()->println("Error: in prog");
-            #endif
+            // ok. we'll reset
           }
 
           // reset state
@@ -742,6 +740,9 @@ int RemoteUploader::process(uint8_t packet[]) {
           if (isTimeout()) {
             reset();
             return TIMEOUT;
+          } else if (flashed) {
+            // this is a retry. be idempotent and just acknowledge
+            return OK;
           }
 
           // done verify we got expected # packets
@@ -789,14 +790,15 @@ int RemoteUploader::process(uint8_t packet[]) {
             #endif              
             return FLASH_ERROR;
           }
-                    
-          // reset everything
-          reset();
+              
+          // NOTE don't reset. in the event the host doesn't get our reply, we want to be able to handle their retry
+          // keep state that we've flashed
+          flashed = true;
         } else {
           // sync error, not expecting prog data   
           // TODO send error. client needs to start over
           #if (DEBUG) 
-            getDebugSerial()->println("not-in-prog");
+            getDebugSerial()->println("Not in prog");
           #endif  
           
           return START_OVER;
