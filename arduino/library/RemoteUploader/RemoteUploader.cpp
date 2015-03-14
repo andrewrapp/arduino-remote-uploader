@@ -588,7 +588,7 @@ bool RemoteUploader::isFlashPacket(uint8_t packet[]) {
 }
 
 bool RemoteUploader::isTimeout() {
-  if (getLastPacketMillis() > 0 && (millis() - getLastPacketMillis()) > programmingTimeout) {
+  if (programmingTimeout > 0 && getLastPacketMillis() > 0 && (millis() - getLastPacketMillis()) > programmingTimeout) {
     #if (DEBUG)
       getDebugSerial()->println("Prog timeout");
     #endif      
@@ -600,6 +600,7 @@ bool RemoteUploader::isTimeout() {
 }
 
 // process packet and return reply code for host
+// every request is idempotent
 int RemoteUploader::process(uint8_t packet[]) {
     // if programming start magic packet is received:
     // reset the target arduino.. determine the neecessary delay

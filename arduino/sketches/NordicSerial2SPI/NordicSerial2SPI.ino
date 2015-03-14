@@ -108,7 +108,7 @@ int send_packet() {
   radio.stopListening();
 
   //dump_buffer(data, 32, "Sending packet to nordic");        
-        
+  
   if (!radio.write(data, 32)) {
     success = TX_FAILURE;         
   } else {
@@ -151,9 +151,9 @@ int send_packet() {
     delay(20); 
               
     radio.startListening();   
-      
-    return success;
   }
+  
+  return success;
 }
 
 void reset() {
@@ -198,41 +198,39 @@ void loop() {
         // complete packet
         
         bool sent = false;
+        bool retry = false;
         
-        // TODO instead of retries send back a resend
-        for (int i = 0; i < TX_LOOP_RETRIES; i++) {
-          int response = send_packet();
+        int response = send_packet();
 
-          if (response == SUCCESS) {
-            sent = true;
-            break; 
-          } else if (response == TX_FAILURE || response == ACK_FAILURE) {
-            if (response == TX_FAILURE) {
-              Serial.println("TX failure");
-            } else {
-              Serial.println("No ack failure");
-            }
-            
-            Serial.println("Retrying...");
-            delay(100);
-          } else if (response == START_OVER) {
-            Serial.println("Start over");
-            break;
-          } else if (response == TIMEOUT) {
-            Serial.println("Timeout");
-            break;
+        if (response == SUCCESS) {
+          sent = true;
+          //break; 
+        } else if (response == TX_FAILURE || response == ACK_FAILURE) {
+          if (response == TX_FAILURE) {
+            Serial.println("TX failure");
           } else {
-            // what is this?? <-Unexpected response -24320
-            Serial.print("Unexpected response: "); Serial.println(response, DEC);
-            break; 
+            Serial.println("No ack failure");
           }
+          
+          retry = true;    
+        } else if (response == START_OVER) {
+          Serial.println("Start over");
+          break;
+        } else if (response == TIMEOUT) {
+          Serial.println("Timeout");
+          break;
+        } else {
+          Serial.print("Unexpected response: "); Serial.println(response, DEC);
+          break; 
         }
 
         if (sent) {
           Serial.println("OK");
+        } else if (retry) {
+          Serial.println("RETRY");
         } else {
           // failed with retries
-          Serial.println("ERROR: Unable to transmit");        
+          Serial.println("ERROR: start over");        
         }
         
         reset();
@@ -242,6 +240,7 @@ void loop() {
     }
   }
 
+  // TODO get timeout from packet
   if (parsing && millis() - last_packet > SERIAL_TIMEOUT) {
     Serial.println("ERROR: Timeout");
     reset();

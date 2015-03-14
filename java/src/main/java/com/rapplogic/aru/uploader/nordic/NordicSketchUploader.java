@@ -103,7 +103,7 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	
 	String reply = null;
 	
-	public void waitForAck(final int timeout) throws InterruptedException {	
+	public void waitForAck(final int timeout) throws InterruptedException, NoAckException {	
 		lock.lockInterruptibly();
 		
 		try {
@@ -112,6 +112,8 @@ public class NordicSketchUploader extends SerialSketchUploader {
 				if (reply.startsWith("OK")) {
 					// ok
 					return;
+				} else if (reply.startsWith("RETRY")) {
+					throw new NoAckException("");
 				} else if (reply.startsWith("ERROR")) {
 					throw new RuntimeException(reply);
 				}
@@ -167,7 +169,8 @@ public class NordicSketchUploader extends SerialSketchUploader {
 //		} else {
 			// run from eclipse for dev
 //			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
-			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
+			//new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
+			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
 //		}
 	}
 }

@@ -42,10 +42,10 @@ public abstract class SketchUploader extends SketchCore {
 	public final int MAGIC_BYTE1 = 0xef;
 	public final int MAGIC_BYTE2 = 0xac;
 	// make enum
-	public final int CONTROL_PROG_REQUEST = 0x10; 	//10000
-	public final int CONTROL_WRITE_EEPROM = 0x20; 	//100000
+	public final int CONTROL_PROG_REQUEST = 0x10;
+	public final int CONTROL_WRITE_EEPROM = 0x20;
 	// somewhat redundant
-	public final int CONTROL_START_FLASH = 0x40; 	//1000000
+	public final int CONTROL_START_FLASH = 0x40;
 	
 	public final int OK = 1;
 	public final int START_OVER = 2;
@@ -127,12 +127,23 @@ public abstract class SketchUploader extends SketchCore {
 			
 			long start = System.currentTimeMillis();
 			int[] startHeader = getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage(), arduinoTimeout);
+				
+			// TODO create class for this
+			for (int i = 0 ;i < retriesPerPacket; i++) {
+				try {
+					System.out.println("Sending sketch to " + getName() + " radio, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(startHeader));			
+					writeData(startHeader, context);
+					waitForAck(ackTimeout);
+					break;					
+				} catch (NoAckException e) {
+					System.out.println("Failed to deliver programming packet " + e.getMessage() + ".. retrying " + toHex(startHeader));
 					
-			System.out.println("Sending sketch to " + getName() + " radio, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(startHeader));			
+					if (i + 1 == retriesPerPacket) {
+						throw new RuntimeException("Failed to send page after " + retriesPerPacket + " retries");
+					}					
+				}
+			}
 
-			writeData(startHeader, context);
-			
-			waitForAck(ackTimeout);
 			
 			for (Page page : sketch.getPages()) {				
 				// make sure we exit on a kill signal like a good app
@@ -165,7 +176,7 @@ public abstract class SketchUploader extends SketchCore {
 						waitForAck(ackTimeout);		
 						break;
 					} catch (NoAckException e) {
-						System.out.println("Failed to deliver programming packet " + e.getMessage() + ".. retrying " + data);
+						System.out.println("Failed to deliver programming packet " + e.getMessage() + ".. retrying " + toHex(data));
 						
 						if (i + 1 == retriesPerPacket) {
 							throw new RuntimeException("Failed to send page after " + retriesPerPacket + " retries");
@@ -188,7 +199,7 @@ public abstract class SketchUploader extends SketchCore {
 					waitForAck(ackTimeout);	
 					break;
 				} catch (NoAckException e) {
-					System.out.println("Failed to deliver flash packet.. retrying" + flash);
+					System.out.println("Failed to deliver flash packet.. retrying" + toHex(flash));
 					
 					if (i + 1 == retriesPerPacket) {
 						throw new RuntimeException("Failed to send flash packet after " + retriesPerPacket + " retries");
