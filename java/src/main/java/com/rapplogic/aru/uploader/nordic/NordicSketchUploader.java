@@ -52,7 +52,8 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	
 	private StringBuilder stringBuilder = new StringBuilder();
 	
-	private final int NORDIC_PAGE_SIZE = 26;
+	private final int NORDIC_PACKET_SIZE = 32;
+//	private final int NORDIC_PAGE_SIZE = 26;
 	
 	public NordicSketchUploader() {
 		super();
@@ -132,25 +133,17 @@ public class NordicSketchUploader extends SerialSketchUploader {
 		getSerialPort().close();
 	}
 	
-	public void process(String file, String device, int speed, String nordicAddress, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException {
+	// TODO send nordic address
+	
+	public void process(String file, String device, int speed, String nordicAddress, int ackTimeout, int arduinoTimeout, int retriesPerPacket, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException {
 		Map<String,Object> context = Maps.newHashMap();
 		context.put("device", device);
 		context.put("speed", speed);
 		context.put("nordicAddress", nordicAddress);
 		
-		super.process(file, NORDIC_PAGE_SIZE, 3, 20, verbose, context);
-	}
-	
-	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException {		
-		initLog4j();
-		
-//		if (false) {
-//			runFromCmdLine(args);
-//		} else {
-			// run from eclipse for dev
-//			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
-			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", true, 5);
-//		}
+		// determine max data we can send with each programming packet
+		int pageSize = NORDIC_PACKET_SIZE - getProgramPageHeader(0, 0).length;
+		super.process(file, pageSize, ackTimeout, arduinoTimeout, retriesPerPacket, verbose, context);
 	}
 
 	@Override
@@ -164,5 +157,17 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	@Override
 	protected String getName() {
 		return "nRF24L01";
+	}
+	
+	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException {		
+		initLog4j();
+		
+//		if (false) {
+//			runFromCmdLine(args);
+//		} else {
+			// run from eclipse for dev
+//			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
+			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
+//		}
 	}
 }

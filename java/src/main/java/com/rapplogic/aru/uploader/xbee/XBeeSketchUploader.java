@@ -119,14 +119,14 @@ public class XBeeSketchUploader extends SketchUploader {
 	
 	private XBee xbee = new XBee();
 	
-	public void process(String file, String device, int speed, String xbeeAddress, final boolean verbose, int ackTimeout, int arduinoTimeout) throws IOException {
+	public void process(String file, String device, int speed, String xbeeAddress, final boolean verbose, int ackTimeout, int arduinoTimeout, int retriesPerPacket) throws IOException {
 		Map<String,Object> context = Maps.newHashMap();
 		context.put("device", device);
 		context.put("speed", speed);
 		XBeeAddress64 xBeeAddress64 = new XBeeAddress64(xbeeAddress);
 		context.put("xbeeAddress", xBeeAddress64);
 		
-		super.process(file, XBEE_PAGE_SIZE, ackTimeout, arduinoTimeout, verbose, context);
+		super.process(file, XBEE_PAGE_SIZE, ackTimeout, arduinoTimeout, retriesPerPacket, verbose, context);
 	}
 
 	private static void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException {
@@ -179,7 +179,7 @@ public class XBeeSketchUploader extends SketchUploader {
 		}
 		
 		// cmd line
-		new XBeeSketchUploader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), baud, cmd.getOptionValue(xbeeAddress), verbose, timeout, 20);
+		new XBeeSketchUploader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), baud, cmd.getOptionValue(xbeeAddress), verbose, timeout, 20, 10);
 	}
 
 	@Override
@@ -265,7 +265,7 @@ public class XBeeSketchUploader extends SketchUploader {
 //			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 1);
 			
 			// bigger sketch
-			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5, 60);
+			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5, 60, 10);
 			
 		}
 	}

@@ -35,7 +35,7 @@
 // Enable debugging statments on any arduino that has multiple serial ports. Must also call setDebugSerial()
 // Never set to Serial on atmega328/168 as it needs Serial for programming and it will certainly fail on flash()
 // IMPORTANT: you must have the serial monitor open when usb debug enabled or will fail after a few packets!
-#define DEBUG false
+#define DEBUG true
 
 // Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
 // Must also enable a debug option (DEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing

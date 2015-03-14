@@ -60,7 +60,7 @@ public abstract class SketchUploader extends SketchCore {
 				MAGIC_BYTE1, 
 				MAGIC_BYTE2, 
 				CONTROL_PROG_REQUEST, 
-				9, // xbee has length built-in but some may not (nordic w/o dynamic payload)
+				10, //length of this header
 				(sizeInBytes >> 8) & 0xff, 
 				sizeInBytes & 0xff, 
 				(numPages >> 8) & 0xff, 
@@ -86,7 +86,7 @@ public abstract class SketchUploader extends SketchCore {
 		};
 	}
 
-	public int[] getEEPROMWriteHeader(int address16, int dataLength) {
+	public int[] getProgramPageHeader(int address16, int dataLength) {
 		return getHeader(CONTROL_WRITE_EEPROM, address16, dataLength);
 	}
 	
@@ -106,8 +106,6 @@ public abstract class SketchUploader extends SketchCore {
 	protected abstract void close() throws Exception;
 	protected abstract String getName();
 	
-	private final int RETRIES = 5;
-	
 	/**
 	 * 
 	 * @param file
@@ -118,7 +116,7 @@ public abstract class SketchUploader extends SketchCore {
 	 * @param context
 	 * @throws IOException
 	 */
-	public void process(String file, int pageSize, int ackTimeout, int arduinoTimeout, boolean verbose, Map<String,Object> context) throws IOException {
+	public void process(String file, int pageSize, int ackTimeout, int arduinoTimeout, int retriesPerPacket, boolean verbose, Map<String,Object> context) throws IOException {
 		// page size is max packet size for the radio
 		Sketch sketch = parseSketchFromIntelHex(file, pageSize);
 			
@@ -142,13 +140,12 @@ public abstract class SketchUploader extends SketchCore {
 					throw new InterruptedException();
 				}
 				
-				int[] data = combine(getEEPROMWriteHeader(page.getRealAddress16(), page.getData().length), page.getData());
+				int[] data = combine(getProgramPageHeader(page.getRealAddress16(), page.getData().length), page.getData());
 				
-				// TODO make configurable
-				for (int i = 0 ;i < RETRIES; i++) {
+				for (int i = 0 ;i < retriesPerPacket; i++) {
 					try {
 						if (verbose) {
-							System.out.println("Sending page " + page.getOrdinal() + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
+							System.out.println("Sending page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
 //							System.out.println("Data " + toHex(page.getData()));
 						} else {
 							System.out.print(".");
@@ -169,6 +166,10 @@ public abstract class SketchUploader extends SketchCore {
 						break;
 					} catch (NoAckException e) {
 						System.out.println("Failed to deliver programming packet " + e.getMessage() + ".. retrying " + data);
+						
+						if (i + 1 == retriesPerPacket) {
+							throw new RuntimeException("Failed to send page after " + retriesPerPacket + " retries");
+						}
 					}
 				}
 			}
@@ -181,13 +182,17 @@ public abstract class SketchUploader extends SketchCore {
 			
 			int[] flash = getFlashStartHeader(sketch.getSize());
 			
-			for (int i = 0 ;i < RETRIES; i++) {
+			for (int i = 0 ;i < retriesPerPacket; i++) {
 				try {
 					writeData(flash, context);
 					waitForAck(ackTimeout);	
 					break;
 				} catch (NoAckException e) {
 					System.out.println("Failed to deliver flash packet.. retrying" + flash);
+					
+					if (i + 1 == retriesPerPacket) {
+						throw new RuntimeException("Failed to send flash packet after " + retriesPerPacket + " retries");
+					}					
 				}
 			}
 
@@ -208,7 +213,6 @@ public abstract class SketchUploader extends SketchCore {
 	public static class NoAckException extends Exception {
 		public NoAckException(String arg0) {
 			super(arg0);
-			// TODO Auto-generated constructor stub
 		}
 	}
 }

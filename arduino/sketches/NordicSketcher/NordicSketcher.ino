@@ -51,7 +51,7 @@ extEEPROM eeprom = extEEPROM(kbits_256, 1, 64);
 
 void setup() {
   // use leonardo (serial1)
-  remoteUploader.setup(&Serial, &eeprom, 9);
+  remoteUploader.setup(&Serial1, &eeprom, 9);
   // use usb-serial for debug
   remoteUploader.setDebugSerial(&Serial);
   
