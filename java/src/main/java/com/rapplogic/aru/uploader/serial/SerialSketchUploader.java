@@ -13,12 +13,10 @@ import java.io.InputStream;
 import java.util.Enumeration;
 import java.util.TooManyListenersException;
 
-import com.rapplogic.aru.core.Page;
-import com.rapplogic.aru.core.Sketch;
 import com.rapplogic.aru.uploader.SketchUploader;
 
 /**
- * Loads a sketch from host filesystem onto an Arduino via an Arduino Leonardo, running the SerialSketcher sketch
+ * Provides serial port access
  * 
  * @author andrew
  *
@@ -50,10 +48,10 @@ public abstract class SerialSketchUploader extends SketchUploader implements Ser
             
             if (portId.getPortType() == CommPortIdentifier.PORT_SERIAL) {
 
-                System.out.println("Found port: " + portId.getName());
+                //System.out.println("Found port: " + portId.getName());
                 
                 if (portId.getName().equals(port)) {
-                    System.out.println("Using Port: " + portId.getName());
+                    //System.out.println("Using Port: " + portId.getName());
                     return portId;
                 }
             }
@@ -77,12 +75,6 @@ public abstract class SerialSketchUploader extends SketchUploader implements Ser
 		serialPort.setSerialPortParams(speed, SerialPort.DATABITS_8, 
 				SerialPort.STOPBITS_1, SerialPort.PARITY_NONE);
 		serialPort.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
-		
-		Runtime.getRuntime().addShutdownHook(new Thread() {
-		    public void run() {
-//		        shutdown();
-		    }
-		});
 	}
 
 	public void serialEvent(SerialPortEvent event) {

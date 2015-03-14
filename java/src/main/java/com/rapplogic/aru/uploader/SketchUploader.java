@@ -51,6 +51,8 @@ public abstract class SketchUploader extends SketchCore {
 	public final int START_OVER = 2;
 	public final int TIMEOUT = 3;
 	
+	private boolean verbose;
+	
 	public SketchUploader() {
 
 	}
@@ -111,7 +113,7 @@ public abstract class SketchUploader extends SketchCore {
 	 * @param file
 	 * @param pageSize
 	 * @param ackTimeout how long we wait for an ack before retrying
-	 * @param arduinoTimeout how long before arduino resets after no activity
+	 * @param arduinoTimeout how long before arduino resets after no activity. value of zero will indicates no timeout
 	 * @param retriesPerPacket how many times to retry sending a page before giving up
 	 * @param verbose
 	 * @param context
@@ -121,6 +123,9 @@ public abstract class SketchUploader extends SketchCore {
 		// page size is max packet size for the radio
 		final Sketch sketch = parseSketchFromIntelHex(file, pageSize);
 			
+		// was trying to keep in stateless but this is needed for the rxtx async input
+		this.verbose = verbose;
+		
 		context.put("verbose", verbose);
 		
 		int retries = 0;
@@ -131,10 +136,11 @@ public abstract class SketchUploader extends SketchCore {
 			long start = System.currentTimeMillis();
 			final int[] startHeader = getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage(), arduinoTimeout);
 				
-			Retryer first = new Retryer(retriesPerPacket) {
+			System.out.println("Sending sketch to " + getName() + " radio, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(startHeader));
+			
+			Retryer first = new Retryer(retriesPerPacket, "start packet") {
 				@Override
-				public void send() throws Exception {
-					System.out.println("Sending sketch to " + getName() + " radio, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(startHeader));			
+				public void send() throws Exception {			
 					writeData(startHeader, context);
 					waitForAck(ackTimeout);					
 				}
@@ -149,21 +155,21 @@ public abstract class SketchUploader extends SketchCore {
 				}
 				
 				final int[] data = combine(getProgramPageHeader(page.getRealAddress16(), page.getData().length), page.getData());
+
+				if (verbose) {
+					System.out.println("Sending page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
+//					System.out.println("Data " + toHex(page.getData()));
+				} else {
+					System.out.print(".");
+					
+					if (page.getOrdinal() > 0 && page.getOrdinal() % 80 == 0) {
+						System.out.println("");
+					}
+				}
 				
-				Retryer retry = new Retryer(retriesPerPacket) {
+				Retryer retry = new Retryer(retriesPerPacket,  "page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size()) {
 					@Override
-					public void send() throws Exception {
-						if (verbose) {
-							System.out.println("Sending page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
-//							System.out.println("Data " + toHex(page.getData()));
-						} else {
-							System.out.print(".");
-							
-							if (page.getOrdinal() > 0 && page.getOrdinal() % 80 == 0) {
-								System.out.println("");
-							}
-						}
-						
+					public void send() throws Exception {		
 						try {
 							writeData(data, context);					
 						} catch (Exception e) {
@@ -182,14 +188,19 @@ public abstract class SketchUploader extends SketchCore {
 				System.out.println("");
 			}
 
-			System.out.println("Sending flash start packet " + toHex(getFlashStartHeader(sketch.getSize())));
-			
+			if (verbose) {
+				System.out.println("Sending flash start packet " + toHex(getFlashStartHeader(sketch.getSize())));
+			}
+
 			final int[] flash = getFlashStartHeader(sketch.getSize());
 			
-			Retryer last = new Retryer(retriesPerPacket) {
+			if (verbose) {
+				System.out.println("Sending flash packet to radio " + toHex(flash));				
+			}
+			
+			Retryer last = new Retryer(retriesPerPacket, "flash start") {
 				@Override
-				public void send() throws Exception {
-					System.out.println("Sending sketch to " + getName() + " radio, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(startHeader));			
+				public void send() throws Exception {			
 					writeData(flash, context);
 					waitForAck(ackTimeout);						
 				}
@@ -218,14 +229,17 @@ public abstract class SketchUploader extends SketchCore {
 	}
 	
 	static abstract class Retryer {
-		public int retries;
+		private int retries;
+		private String context;
+		
 
-		public Retryer(int retries) {
+		public Retryer(int retries, String context) {
 			if (retries <= 0) {
 				throw new IllegalArgumentException("Retries must be >= 1");
 			}
 			
 			this.retries = retries;
+			this.context = context;
 		}
 	
 		public int sendWithRetries() {
@@ -234,10 +248,10 @@ public abstract class SketchUploader extends SketchCore {
 					send();
 					return i;
 				} catch (NoAckException e) {
-					System.out.println("Failed to deliver flash packet.. retrying");
+					System.out.println("\nFailed to deliver packet [" + context + "] on attempt " + (i + 1) + ".. retrying");
 					
 					if (i + 1 == retries) {
-						throw new RuntimeException("Failed to send after " + (retries + 1) + " attempts");
+						throw new RuntimeException("Failed to send after " + (i + 1) + " attempts");
 					}
 					
 					continue;
@@ -251,5 +265,9 @@ public abstract class SketchUploader extends SketchCore {
 		}
 		
 		public abstract void send() throws NoAckException, Exception;
+	}
+
+	public boolean isVerbose() {
+		return verbose;
 	}
 }

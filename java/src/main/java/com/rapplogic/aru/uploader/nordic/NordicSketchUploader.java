@@ -93,7 +93,10 @@ public class NordicSketchUploader extends SerialSketchUploader {
 		lock.lockInterruptibly();
 		
 		try {
-			System.out.println("<-" + reply);
+			if (isVerbose()) {
+				System.out.println("<-" + reply);				
+			}
+
 			this.reply = reply;
 			replyCondition.signal();
 		} finally {
@@ -176,8 +179,8 @@ public class NordicSketchUploader extends SerialSketchUploader {
 //		} else {
 			// run from eclipse for dev
 //			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
-			//new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
-			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
+//		new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 10, false, 5);
+			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 50, false, 5);
 //		}
 	}
 }
