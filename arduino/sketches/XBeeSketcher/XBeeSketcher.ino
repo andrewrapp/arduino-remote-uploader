@@ -34,8 +34,8 @@
 #define ACK_TIMEOUT 1000
 
 // these can be swapped to any other free digital pins
-#define xBeeSoftTxPin 11
-#define xBeeSoftRxPin 10
+#define XBEE_SOFTSERIAL_TX_PIN 8
+#define XBEE_SOFTSERIAL_RX_PIN 7
 
 // Specify the XBee coordinator address to send ACKs
 const uint32_t COORD_MSB_ADDRESS = 0x0013a200;
@@ -55,7 +55,7 @@ ZBTxStatusResponse txStatus = ZBTxStatusResponse();
 
 //Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
-SoftwareSerial nss(xBeeSoftTxPin, xBeeSoftRxPin);
+SoftwareSerial nss(XBEE_SOFTSERIAL_TX_PIN, XBEE_SOFTSERIAL_RX_PIN);
 
 RemoteUploader remoteUploader = RemoteUploader();
 

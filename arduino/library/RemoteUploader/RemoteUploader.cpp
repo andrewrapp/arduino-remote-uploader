@@ -58,8 +58,6 @@ Leonardo  2 (SDA), 3 (SCL)
 Due 20 (SDA), 21 (SCL), SDA1, SCL1
 
 Programmer digital 8 -> reset
-Programmer digital 11 -> XBee RX
-Programmer digital 10 -> XBee TX
 Programmer TX -> app arduino RX
 Programmer RX -> app arduino TX
 
@@ -686,9 +684,9 @@ int RemoteUploader::process(uint8_t packet[]) {
           
           // now write page to eeprom
 
-            #if (DEBUG)
-              getDebugSerial()->print("max address "); getDebugSerial()->print(maxEEPROMAddress, DEC); getDebugSerial()->print(" this address "); getDebugSerial()->println(address + EEPROM_OFFSET_ADDRESS, DEC);
-            #endif
+            // #if (DEBUG)
+            //   getDebugSerial()->print("max address "); getDebugSerial()->print(maxEEPROMAddress, DEC); getDebugSerial()->print(" this address "); getDebugSerial()->println(address + EEPROM_OFFSET_ADDRESS, DEC);
+            // #endif
 
           // check if the address of this packet aligns with the last write to eeprom
           if ((address + EEPROM_OFFSET_ADDRESS) < maxEEPROMAddress) {

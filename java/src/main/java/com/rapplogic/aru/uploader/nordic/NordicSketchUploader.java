@@ -120,7 +120,15 @@ public class NordicSketchUploader extends SerialSketchUploader {
 			while (replyCondition.await(timeout, TimeUnit.SECONDS)) {				
 				if (reply.startsWith("OK")) {
 					// ok
-					return;
+					// parse id
+					int replyId = Integer.parseInt(reply.split(",")[1].trim());
+					
+					if (replyId == id) {
+						// perfect!
+						return;
+					} else {
+						throw new NoAckException("Reply id " + replyId + " does not match the expected id " + id);	
+					}
 				} else if (reply.startsWith("RETRY")) {
 					throw new NoAckException("");
 				} else if (reply.startsWith("ERROR")) {

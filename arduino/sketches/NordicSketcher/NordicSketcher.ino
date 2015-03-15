@@ -39,7 +39,16 @@
 // Set up nRF24L01 radio on SPI bus
 RF24 radio(NORDIC_CE, NORDIC_CS);
 
-uint8_t replyPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0 };
+// 328
+//MOSI — Digital 11
+//MISO — Digital 12
+//SCK — Digital 13
+// Leonardo
+//MOSI — ICSP 4
+//MISO — ICSP 1
+//SCK — ICSP 3
+
+uint8_t replyPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0, 0, 0 };
 
 uint64_t baseAddress = 0xca05cade05LL;
 const uint64_t pipes[2] = { baseAddress, baseAddress + 1 };
@@ -81,8 +90,7 @@ int sendReply(uint8_t status, uint16_t id) {
   
   delay(20);
 
-  // can we do this. does it need to be 32 bytes?
-  bool ok = radio.write(replyPayload, 3);
+  bool ok = radio.write(replyPayload, 5);
   
   int success = 0;
   
