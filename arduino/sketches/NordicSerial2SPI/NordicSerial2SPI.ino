@@ -204,7 +204,6 @@ void loop() {
 
         if (response == SUCCESS) {
           sent = true;
-          //break; 
         } else if (response == TX_FAILURE || response == ACK_FAILURE) {
           if (response == TX_FAILURE) {
             Serial.println("TX failure");
@@ -225,7 +224,10 @@ void loop() {
         }
 
         if (sent) {
-          Serial.println("OK");
+          // send ok with id
+          Serial.print("OK,");
+          Serial.print((ack[3] << 8) + ack[4], DEC);
+          Serial.println("");
         } else if (retry) {
           Serial.println("RETRY");
         } else {

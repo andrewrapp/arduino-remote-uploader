@@ -131,7 +131,6 @@ HardwareSerial* RemoteUploader::getProgrammerSerial() {
   }
 #endif
 
-
 void RemoteUploader::clearRead() {
   int count = 0;
   while (getProgrammerSerial()->available() > 0) {
@@ -600,6 +599,11 @@ bool RemoteUploader::isTimeout() {
   return false;
 }
 
+uint16_t RemoteUploader::getPacketId(uint8_t packet[]) {
+  // always 4,5
+  return (packet[4] << 8) + packet[5];
+}
+
 // process packet and return reply code for host
 // every request is idempotent
 int RemoteUploader::process(uint8_t packet[]) {
@@ -618,6 +622,10 @@ int RemoteUploader::process(uint8_t packet[]) {
         // echo * for each programming packet
         #if (DEBUG) 
           getDebugSerial()->print("*");
+
+          if (packetCount > 0 && packetCount % 80 == 0) {
+            getDebugSerial()->println("");            
+          }
         #endif
       
         if (packet[2] == CONTROL_PROG_REQUEST) {
@@ -678,17 +686,26 @@ int RemoteUploader::process(uint8_t packet[]) {
           
           // now write page to eeprom
 
+            #if (DEBUG)
+              getDebugSerial()->print("max address "); getDebugSerial()->print(maxEEPROMAddress, DEC); getDebugSerial()->print(" this address "); getDebugSerial()->println(address + EEPROM_OFFSET_ADDRESS, DEC);
+            #endif
+
           // check if the address of this packet aligns with the last write to eeprom
           if ((address + EEPROM_OFFSET_ADDRESS) < maxEEPROMAddress) {
             // ok, looks like a retry for a packet that got processed but the ack failed
             #if (DEBUG)
-              getDebugSerial()->print("WARN: expected address "); getDebugSerial()->print(currentEEPROMAddress, DEC); getDebugSerial()->print(" but got "); getDebugSerial()->println(address + EEPROM_OFFSET_ADDRESS, DEC);
+              getDebugSerial()->print("WARN: expected address "); getDebugSerial()->print(maxEEPROMAddress, DEC); getDebugSerial()->print(" but got "); getDebugSerial()->println(address + EEPROM_OFFSET_ADDRESS, DEC);
             #endif
+
+              // TODO we already processed this. just send OK
           } else if ((address + EEPROM_OFFSET_ADDRESS) > maxEEPROMAddress) {
+            // **ERROR: current address 10512 but max is 10448
+
+
             // attempt to write beyond current eeprom address
             // this would result in a gap in data and would ultimately fail, so reject
             #if (DEBUG)
-              getDebugSerial()->print("ERROR: attempt to write @ address "); getDebugSerial()->print((address + EEPROM_OFFSET_ADDRESS) & 0xff, DEC); getDebugSerial()->print(" but current address @ "); getDebugSerial()->println(currentEEPROMAddress & 0xff, DEC);            
+              getDebugSerial()->print("ERROR: current address "); getDebugSerial()->print((address + EEPROM_OFFSET_ADDRESS), DEC); getDebugSerial()->print(" but max is "); getDebugSerial()->println(maxEEPROMAddress, DEC);            
             #endif
             
             // FIXME still getting this

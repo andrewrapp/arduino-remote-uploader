@@ -45,7 +45,8 @@ XBee xbee = XBee();
 XBeeResponse response = XBeeResponse();
 ZBRxResponse rx = ZBRxResponse();
 
-uint8_t xbeeTxPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0 };
+// format magic bytes, status, id1, id2
+uint8_t xbeeTxPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0, 0, 0 };
 
 // Coordinator/XMPP Gateway
 XBeeAddress64 addr64 = XBeeAddress64(COORD_MSB_ADDRESS, COORD_LSB_ADDRESS);
@@ -66,8 +67,9 @@ Stream* getXBeeSerial() {
 
 void setup() {
   // setup uploader with the serial, eeprom and reset pin
-  remoteUploader.setup(&Serial, &eeprom, 9);
-  
+  remoteUploader.setup(&Serial1, &eeprom, 9);
+  // use usb-serial for debug
+  remoteUploader.setDebugSerial(&Serial);  
   // TODO if setup_success != OK send error programming attempt
   // we only have one Serial port (UART) so need nss for XBee
   
@@ -85,19 +87,6 @@ void setup() {
   #endif    
 }
 
-//void checkTimeout() {
-//  if (remoteUploader.inProgrammingMode() && remoteUploader.getLastPacketMillis() > 0 && (millis() - remoteUploader.getLastPacketMillis()) > PROG_TIMEOUT) {
-//    // timeout
-//    #if (USBDEBUG || NSSDEBUG)
-//      remoteUploader.getDebugSerial()->println("Prog timeout");
-//    #endif  
-//    // tell host to start over
-//    sendReply(TIMEOUT);
-//    
-//    remoteUploader.reset();
-//  }
-//}
-
 // TODO move to library.. tell library of the proxySerial port
 void handleProxy() {
   // don't need to test in_prog. if in prog we are just collecting packets so can keep relaying. when flashing, it's blocking so will never get here
@@ -111,10 +100,12 @@ void handleProxy() {
 }
 
 // TODO send version
-int sendReply(uint8_t status) {
+int sendReply(uint8_t status, uint16_t id) {
   xbeeTxPayload[0] = MAGIC_BYTE1;
   xbeeTxPayload[1] = MAGIC_BYTE2;
   xbeeTxPayload[2] = status;
+  xbeeTxPayload[3] = (id >> 8) & 0xff;
+  xbeeTxPayload[4] = id & 0xff;
   
   // TODO send with magic packet host can differentiate between relayed packets and programming ACKS
   xbee.send(tx);
@@ -186,6 +177,8 @@ void forwardPacket() {
    send_xbee_packet(xbee.getResponse().getChecksum(), true);  
 }
 
+// TODO ack needs to send the id (packet #) otherwise we may be getting a different ack, right?
+
 void loop() {  
   xbee.readPacket();
   
@@ -209,7 +202,7 @@ void loop() {
             remoteUploader.reset();
           }
  
-          sendReply(response);          
+          sendReply(response, remoteUploader.getPacketId(packet));          
           
           if (remoteUploader.isFlashPacket(packet)) {
             if (PROXY_SERIAL) {

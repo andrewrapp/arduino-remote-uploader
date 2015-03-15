@@ -88,6 +88,10 @@ public abstract class SketchUploader extends SketchCore {
 		};
 	}
 
+	protected int getPacketId(int[] reply) {
+		return (reply[3] << 8) + reply[4];
+	}
+	
 	public int[] getProgramPageHeader(int address16, int dataLength) {
 		return getHeader(CONTROL_WRITE_EEPROM, address16, dataLength);
 	}
@@ -104,7 +108,14 @@ public abstract class SketchUploader extends SketchCore {
 
 	protected abstract void open(Map<String,Object> context) throws Exception;
 	protected abstract void writeData(int[] data, Map<String,Object> context) throws Exception;
-	protected abstract void waitForAck(int timeout) throws NoAckException, Exception;
+	/**
+	 * 
+	 * @param timeout
+	 * @param id how we know we got the ack for this packet and not a different packet
+	 * @throws NoAckException
+	 * @throws Exception
+	 */
+	protected abstract void waitForAck(int timeout, int id) throws NoAckException, Exception;
 	protected abstract void close() throws Exception;
 	protected abstract String getName();
 	
@@ -142,7 +153,7 @@ public abstract class SketchUploader extends SketchCore {
 				@Override
 				public void send() throws Exception {			
 					writeData(startHeader, context);
-					waitForAck(ackTimeout);					
+					waitForAck(ackTimeout, sketch.getSize());					
 				}
 			};
 			
@@ -153,31 +164,31 @@ public abstract class SketchUploader extends SketchCore {
 				if (Thread.currentThread().isInterrupted()) {
 					throw new InterruptedException();
 				}
-				
-				final int[] data = combine(getProgramPageHeader(page.getRealAddress16(), page.getData().length), page.getData());
-
-				if (verbose) {
-					System.out.println("Sending page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
-//					System.out.println("Data " + toHex(page.getData()));
-				} else {
-					System.out.print(".");
-					
-					if (page.getOrdinal() > 0 && page.getOrdinal() % 80 == 0) {
-						System.out.println("");
-					}
-				}
-				
+								
 				Retryer retry = new Retryer(retriesPerPacket,  "page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size()) {
 					@Override
 					public void send() throws Exception {		
 						try {
+							final int[] data = combine(getProgramPageHeader(page.getRealAddress16(), page.getData().length), page.getData());
+
+							if (verbose) {
+								System.out.println("Sending page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size() + ", with address " + page.getRealAddress16() + ", length " + data.length + ", packet " + toHex(data));
+//								System.out.println("Data " + toHex(page.getData()));
+							} else {
+								System.out.print(".");
+								
+								if (page.getOrdinal() > 0 && page.getOrdinal() % 80 == 0) {
+									System.out.println("");
+								}
+							}
+							
 							writeData(data, context);					
 						} catch (Exception e) {
 							throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size(), e);
 						}
 						
 						// don't send next page until this one is processed or we will overflow the buffer
-						waitForAck(ackTimeout);				
+						waitForAck(ackTimeout, page.getRealAddress16());				
 					}
 				};
 				
@@ -202,7 +213,7 @@ public abstract class SketchUploader extends SketchCore {
 				@Override
 				public void send() throws Exception {			
 					writeData(flash, context);
-					waitForAck(ackTimeout);						
+					waitForAck(ackTimeout, sketch.getSize());						
 				}
 			};
 			
@@ -227,6 +238,12 @@ public abstract class SketchUploader extends SketchCore {
 			super(arg0);
 		}
 	}
+
+	public static class WrongIdAckException extends Exception {
+		public WrongIdAckException(String arg0) {
+			super(arg0);
+		}
+	}
 	
 	static abstract class Retryer {
 		private int retries;
@@ -248,7 +265,7 @@ public abstract class SketchUploader extends SketchCore {
 					send();
 					return i;
 				} catch (NoAckException e) {
-					System.out.println("\nFailed to deliver packet [" + context + "] on attempt " + (i + 1) + ".. retrying");
+					System.out.println("\nFailed to deliver packet [" + context + "] on attempt " + (i + 1) + ", reason " + e.getMessage() + ".. retrying");
 					
 					if (i + 1 == retries) {
 						throw new RuntimeException("Failed to send after " + (i + 1) + " attempts");

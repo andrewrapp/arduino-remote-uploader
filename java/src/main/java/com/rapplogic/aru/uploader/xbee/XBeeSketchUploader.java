@@ -21,8 +21,8 @@ package com.rapplogic.aru.uploader.xbee;
 
 import java.io.IOException;
 import java.text.ParseException;
-import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
@@ -44,7 +44,6 @@ import com.rapplogic.xbee.api.XBeeResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetRxResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
-import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse.DeliveryStatus;
 
 /**
  * Only tested on Mac. I've included RXTX libraries for windows, and linux, so should work for 32-bit jvms
@@ -58,7 +57,7 @@ import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse.DeliveryStatus;
  */
 public class XBeeSketchUploader extends SketchUploader {
 	
-	final List<Integer> messages = Lists.newArrayList();
+	final Queue<int[]> replies = Lists.newLinkedList();
 		
 	// xbee just woke, send programming now!
 	//final int WAKE = 4;
@@ -73,37 +72,54 @@ public class XBeeSketchUploader extends SketchUploader {
 		super();
 	}
 	
-//	2015-03-13 07:12:10,984 [ERROR|com.rapplogic.aru.uploader.SketchUploader|SketchUploader] Unexpected error
-//	java.lang.RuntimeException: No reply from Arduino after 5 seconds
-//		at com.rapplogic.aru.uploader.xbee.XBeeSketchUploader.waitForAck(XBeeSketchUploader.java:97)
-//		at com.rapplogic.aru.uploader.SketchUploader.process(SketchUploader.java:123)
-//		at com.rapplogic.aru.uploader.xbee.XBeeSketchUploader.process(XBeeSketchUploader.java:113)
-//		at com.rapplogic.aru.uploader.xbee.XBeeSketchUploader.main(XBeeSketchUploader.java:176)
-		
-	
-	public void waitForAck(final int timeout) throws InterruptedException, NoAckException {
+	public void waitForAck(final int timeout, int address) throws InterruptedException, NoAckException {
 		long now = System.currentTimeMillis();
-		// TODO send this timeout to arduino in prog start header
 		
 		lock.lockInterruptibly();
 		
 		try {			
-			if (rxPacketCondition.await(timeout, TimeUnit.SECONDS)) {
-				int reply = messages.get(0).intValue();
-				
-				switch (reply) {
-				case OK:
-					break;
-				case START_OVER:
-					throw new RuntimeException("Upload failed: arduino said to start over");
-				case TIMEOUT:
-					throw new RuntimeException("Upload failed: arduino sent a timeout reply.. start over");
-				default:
-					throw new RuntimeException("Unexpected response code from arduino: " + toHex(new int[] {reply}));						
-				}				
-			} else {
-				throw new NoAckException("No ACK from XBee after " + timeout + " seconds");				
-			}				
+			long start = System.currentTimeMillis();
+			long timeoutMillis = timeout * 1000;
+			
+			while (timeoutMillis > 0) {
+				if (rxPacketCondition.await(timeoutMillis, TimeUnit.MILLISECONDS)) {
+					int[] reply = null;
+					
+					reply = replies.poll();
+					
+					switch (reply[2]) {
+					case OK:
+						int ackAddress = getPacketId(reply);
+						
+						if (ackAddress == address) {
+							return;
+						} else {
+							// ack id does not match tx id
+							// if the arduino xbee is configured for retries we can get multiple acks. in this case we got an ack for the previous page
+							timeoutMillis = timeout*1000 - (System.currentTimeMillis() - start);
+							
+							if (timeoutMillis > 0) {
+								System.out.println("Received ack for address " + ackAddress + " but expected address " + address + ".. ignoring. waiting for " + timeout + " more ms");								
+							} else {
+								System.out.println("Received ack for address " + ackAddress + " but expected address " + address + ".. ignoring");
+							}
+
+							// wait some more
+							continue;
+						}
+					case START_OVER:
+						throw new RuntimeException("Upload failed: arduino said to start over");
+					case TIMEOUT:
+						throw new RuntimeException("Upload failed: arduino sent a timeout reply.. start over");
+					default:
+						throw new RuntimeException("Unexpected response code from arduino: " + reply);						
+					}					
+				} else {
+					throw new NoAckException("No ACK from XBee after " + timeout + " seconds");				
+				}					
+			}
+			
+			throw new NoAckException("No ACK from XBee after " + timeout + " seconds");
 		} finally {
 			lock.unlock();
 		}
@@ -194,11 +210,10 @@ public class XBeeSketchUploader extends SketchUploader {
 					boolean verbose = (Boolean) context.get("verbose");
 					
 					if (verbose) {
-						System.out.println("Received message from arduino " + response);							
+						System.out.println("Received rx packet from arduino " + response);							
 					}
 
 					ZNetRxResponse zb = (ZNetRxResponse) response;
-					messages.clear();
 					
 					if (zb.getData()[0] == MAGIC_BYTE1 && zb.getData()[1] == MAGIC_BYTE2) {
 						try {
@@ -209,7 +224,7 @@ public class XBeeSketchUploader extends SketchUploader {
 						}
 						
 						try {
-							messages.add(zb.getData()[2]);
+							replies.offer(zb.getData());
 							rxPacketCondition.signal();								
 						} finally {
 							lock.unlock();
@@ -265,7 +280,7 @@ public class XBeeSketchUploader extends SketchUploader {
 //			new XBeeSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 1);
 			
 			// bigger sketch
-			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5, 60, 10);
+			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", true, 5, 0, 500);
 			
 		}
 	}

@@ -127,6 +127,7 @@ public:
 	bool isProgrammingPacket(uint8_t packet[], uint8_t packet_length);
 	bool isFlashPacket(uint8_t packet[]);
 	HardwareSerial* getProgrammerSerial();	
+	uint16_t getPacketId(uint8_t packet[]);
 	// can only use DEBUG with Leonardo or other variant that supports multiple serial ports
 	#if (DEBUG)
 	  Stream* getDebugSerial();

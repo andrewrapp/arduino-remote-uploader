@@ -69,13 +69,15 @@ uint8_t pipe = 1;
 
 // send reply to host
 // 0 if success, < 0 failure
-int sendReply(uint8_t status) {
+int sendReply(uint8_t status, uint16_t id) {
   
   radio.stopListening();
         
   replyPayload[0] = MAGIC_BYTE1;
   replyPayload[1] = MAGIC_BYTE2;
   replyPayload[2] = status;
+  replyPayload[3] = (id >> 8) & 0xff;
+  replyPayload[4] = id & 0xff;
   
   delay(20);
 
@@ -118,7 +120,7 @@ void loop() {
           }
         }
         
-        sendReply(response);          
+        sendReply(response, remoteUploader.getPacketId(packet));          
       }
     }
 }
