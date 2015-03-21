@@ -22,6 +22,9 @@ package com.rapplogic.aru.uploader;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
 
@@ -50,13 +53,104 @@ public abstract class SketchUploader extends SketchCore {
 	public final int OK = 1;
 	public final int START_OVER = 2;
 	public final int TIMEOUT = 3;
+	public final int RETRY = 0xff;
 	
 	private boolean verbose;
+	//private boolean programInterrupt;
+	
+	private BlockingQueue<int[]> ackQueue = new LinkedBlockingQueue<int[]>();
+//	private final Thread main = Thread.currentThread();
 	
 	public SketchUploader() {
 
 	}
+	
+//	protected Thread getMainThread() {
+//		return main;
+//	}
+	
+	/**
+	 * Add a reply to the queue
+	 */
+	protected void addReply(int[] reply) {
+		ackQueue.add(reply);
+	}
+	
+	/**
+	 * Waits up to timeoutMillis for reply. if id does not match it will wait some more up to the timeout
+	 * 
+	 * @param timeoutMillis
+	 * @param id
+	 * @throws NoAckException 
+	 * @throws InterruptedException 
+	 * @throws StartOverException 
+	 */
+	protected void waitForAck(final int timeoutMillis, int id) throws NoAckException, InterruptedException, StartOverException {
+		long start = System.currentTimeMillis();
+		long timeLeft = timeoutMillis;
 		
+		while (timeoutMillis > 0) {
+			
+			boolean interrupted = false;
+			
+			if (Thread.currentThread().interrupted()) {
+				interrupted = true;
+			}
+			
+			int[] reply = null;
+			
+			try {				
+				reply = ackQueue.poll(timeoutMillis, TimeUnit.MILLISECONDS);				
+			} catch (InterruptedException e) {
+				interrupted = true;
+			}
+			
+			if (interrupted) {
+//				if (programInterrupt) {
+//					programInterrupt = false;
+//					// reset
+//					throw new NoAckException("Interrupted while waiting for ACK after " + (System.currentTimeMillis() - start) + "ms");					
+//				}
+				
+				throw new InterruptedException();
+			}
+			
+			if (reply != null) {
+				switch (reply[2]) {
+				case OK:
+					int packetId = getPacketId(reply);
+					
+					if (packetId != id) {
+						// ack id does not match tx id
+						// if the transport is configured for retries we can get multiple acks. in this case we got a late ack for the previous page or it sent multiple acks
+						timeLeft = timeoutMillis - (System.currentTimeMillis() - start);
+						// if it's negative that's just fine
+						if (verbose) {
+							System.out.println("Received ack for id " + packetId + " but expected id " + id + ".. ignoring and waiting for " + timeLeft + "ms");							
+						}
+						
+						// wait some more
+						continue;
+					}
+					
+					// match
+					return;
+				case START_OVER:
+					throw new StartOverException("Upload failed: arduino said to start over");
+				case TIMEOUT:
+					throw new StartOverException("Upload failed: arduino sent a timeout reply.. start over");
+				case RETRY:
+					// fictitious reply. does not come from arduino
+					throw new NoAckException("Received RETRY ack");
+				default:
+					throw new StartOverException("Unexpected response code from arduino: " + reply);						
+				}				
+			}			
+		}
+		
+		throw new NoAckException("No ACK from transport device after " + timeoutMillis + " seconds");		
+	}
+	
 	public int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage, int timeout) {
 		return new int[] { 
 				MAGIC_BYTE1, 
@@ -115,7 +209,7 @@ public abstract class SketchUploader extends SketchCore {
 	 * @throws NoAckException
 	 * @throws Exception
 	 */
-	protected abstract void waitForAck(int timeout, int id) throws NoAckException, Exception;
+//	protected abstract void waitForAck(int timeout, int id) throws NoAckException, Exception;
 	protected abstract void close() throws Exception;
 	protected abstract String getName();
 	
@@ -129,6 +223,7 @@ public abstract class SketchUploader extends SketchCore {
 	 * @param verbose
 	 * @param context
 	 * @throws IOException
+	 * @throws StartOverException 
 	 */
 	public void process(String file, int pageSize, final int ackTimeout, int arduinoTimeout, int retriesPerPacket, final boolean verbose, final Map<String,Object> context) throws IOException {
 		// page size is max packet size for the radio
@@ -160,9 +255,14 @@ public abstract class SketchUploader extends SketchCore {
 			retries+= first.sendWithRetries();
 			
 			for (final Page page : sketch.getPages()) {				
-				// make sure we exit on a kill signal like a good app
+				// make sure we do a timely exit on a kill signal
 				if (Thread.currentThread().isInterrupted()) {
-					throw new InterruptedException();
+//					if (programInterrupt) {
+//						programInterrupt = false;
+//						Thread.currentThread().interrupted();
+//					} else {
+						throw new InterruptedException();						
+//					}
 				}
 								
 				Retryer retry = new Retryer(retriesPerPacket,  "page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size()) {
@@ -184,7 +284,7 @@ public abstract class SketchUploader extends SketchCore {
 							
 							writeData(data, context);					
 						} catch (Exception e) {
-							throw new RuntimeException("Failed to deliver packet at page " + page.getOrdinal() + " of " + sketch.getPages().size(), e);
+							throw new RuntimeException("Unexpected error at page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size(), e);
 						}
 						
 						// don't send next page until this one is processed or we will overflow the buffer
@@ -219,11 +319,13 @@ public abstract class SketchUploader extends SketchCore {
 			
 			retries+= last.sendWithRetries();
 
-			System.out.println("Successfully flashed remote Arduino in " + (System.currentTimeMillis() - start) + "ms, with " + retries + " resent packets");
+			System.out.println("Successfully flashed remote Arduino in " + (System.currentTimeMillis() - start) / 1000 + "s, with " + retries + " retries");
 		} catch (InterruptedException e) {
 			// kill signal
 			System.out.println("Interrupted during programming.. exiting");
 			return;
+		} catch (StartOverException e) {
+			log.warn("Start over " + e.getMessage());
 		} catch (Exception e) {
 			log.error("Unexpected error", e);
 		} finally {
@@ -238,12 +340,12 @@ public abstract class SketchUploader extends SketchCore {
 			super(arg0);
 		}
 	}
-
-	public static class WrongIdAckException extends Exception {
-		public WrongIdAckException(String arg0) {
+	
+	public static class StartOverException extends Exception {
+		public StartOverException(String arg0) {
 			super(arg0);
 		}
-	}
+	}	
 	
 	static abstract class Retryer {
 		private int retries;
@@ -259,9 +361,10 @@ public abstract class SketchUploader extends SketchCore {
 			this.context = context;
 		}
 	
-		public int sendWithRetries() {
+		public int sendWithRetries() throws StartOverException {
 			for (int i = 0 ;i < retries; i++) {
 				try {
+					// reset
 					send();
 					return i;
 				} catch (NoAckException e) {
@@ -272,6 +375,8 @@ public abstract class SketchUploader extends SketchCore {
 					}
 					
 					continue;
+				} catch (StartOverException e) {
+					throw e;
 				} catch (Exception e) {
 					throw new RuntimeException("Unable to retry due to unexpected exception", e);
 				}
@@ -286,5 +391,13 @@ public abstract class SketchUploader extends SketchCore {
 
 	public boolean isVerbose() {
 		return verbose;
+	}
+	
+	public void interrupt() {
+//		if (Thread.currentThread() != getMainThread()) {
+//			programInterrupt = true;
+//			getMainThread().interrupt();
+//		}
+		// else throw illegal
 	}
 }

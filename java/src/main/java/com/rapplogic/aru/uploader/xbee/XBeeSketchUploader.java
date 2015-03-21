@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -41,6 +40,7 @@ import com.rapplogic.xbee.api.XBee;
 import com.rapplogic.xbee.api.XBeeAddress64;
 import com.rapplogic.xbee.api.XBeeException;
 import com.rapplogic.xbee.api.XBeeResponse;
+import com.rapplogic.xbee.api.XBeeTimeoutException;
 import com.rapplogic.xbee.api.zigbee.ZNetRxResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
@@ -70,67 +70,6 @@ public class XBeeSketchUploader extends SketchUploader {
 	
 	public XBeeSketchUploader() {
 		super();
-	}
-	
-	public void waitForAck(final int timeout, int address) throws InterruptedException, NoAckException {
-		long now = System.currentTimeMillis();
-		
-		lock.lockInterruptibly();
-		
-		try {			
-			long start = System.currentTimeMillis();
-			long timeoutMillis = timeout * 1000;
-			
-			while (timeoutMillis > 0) {
-				if (rxPacketCondition.await(timeoutMillis, TimeUnit.MILLISECONDS)) {
-					int[] reply = null;
-					
-					reply = replies.poll();
-					
-					switch (reply[2]) {
-					case OK:
-						int ackAddress = getPacketId(reply);
-						
-						if (ackAddress == address) {
-							return;
-						} else {
-							// ack id does not match tx id
-							// if the arduino xbee is configured for retries we can get multiple acks. in this case we got an ack for the previous page
-							timeoutMillis = timeout*1000 - (System.currentTimeMillis() - start);
-							
-							if (timeoutMillis > 0) {
-								System.out.println("Received ack for address " + ackAddress + " but expected address " + address + ".. ignoring. waiting for " + timeout + " more ms");								
-							} else {
-								System.out.println("Received ack for address " + ackAddress + " but expected address " + address + ".. ignoring");
-							}
-
-							// wait some more
-							continue;
-						}
-					case START_OVER:
-						throw new RuntimeException("Upload failed: arduino said to start over");
-					case TIMEOUT:
-						throw new RuntimeException("Upload failed: arduino sent a timeout reply.. start over");
-					default:
-						throw new RuntimeException("Unexpected response code from arduino: " + reply);						
-					}					
-				} else {
-					throw new NoAckException("No ACK from XBee after " + timeout + " seconds");				
-				}					
-			}
-			
-			throw new NoAckException("No ACK from XBee after " + timeout + " seconds");
-		} finally {
-			lock.unlock();
-		}
-		
-
-		// test arduino timeout
-//		counter++;
-//		if (counter == 3) {
-//			System.out.println("sloooow");
-//			Thread.sleep(7000);
-//		}
 	}
 	
 	private XBee xbee = new XBee();
@@ -216,20 +155,7 @@ public class XBeeSketchUploader extends SketchUploader {
 					ZNetRxResponse zb = (ZNetRxResponse) response;
 					
 					if (zb.getData()[0] == MAGIC_BYTE1 && zb.getData()[1] == MAGIC_BYTE2) {
-						try {
-							lock.lockInterruptibly();
-						} catch (InterruptedException e) {
-							// interrupted (kill signal)
-							return;
-						}
-						
-						try {
-							replies.offer(zb.getData());
-							rxPacketCondition.signal();								
-						} finally {
-							lock.unlock();
-						}
-					
+						addReply(zb.getData());
 					} else {
 						System.out.println("Ignoring non-programming packet " + zb);
 					}
@@ -239,9 +165,9 @@ public class XBeeSketchUploader extends SketchUploader {
 					if (zNetTxStatusResponse.isSuccess()) {
 						// yay					
 					} else {
-						// in a thread so just wait for ack to fail
-						// TODO send message to waitForAck
-						System.out.println("Failed to delivery packet: " + response);
+						// interrupt thread in case it's waiting for ack, which will never come
+						System.out.println("Failed to deliver packet. Interrupting main thread. Response: " + response);
+						interrupt();
 					}
 				}
 			}
@@ -253,7 +179,15 @@ public class XBeeSketchUploader extends SketchUploader {
 	@Override
 	protected void writeData(int[] data, Map<String,Object> context) throws Exception {
 		XBeeAddress64 address = (XBeeAddress64) context.get("xbeeAddress");
-		xbee.sendAsynchronous(new ZNetTxRequest(address, data));
+		//xbee.sendAsynchronous(new ZNetTxRequest(address, data));
+		
+		try {
+			// TODO make configurable timeout
+			xbee.sendSynchronous(new ZNetTxRequest(address, data), 500);			
+		} catch (XBeeTimeoutException e) {
+			System.out.println("No tx ack after 500ms" + e.getMessage());
+		}
+
 	}
 
 	@Override

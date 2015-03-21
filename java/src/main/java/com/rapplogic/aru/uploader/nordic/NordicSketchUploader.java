@@ -27,7 +27,6 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.util.Map;
 import java.util.TooManyListenersException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -91,54 +90,37 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	}
 	
 	protected void handleSerialReply(String reply) throws InterruptedException {
-		lock.lockInterruptibly();
-		
-		try {
-			if (isVerbose()) {
-				System.out.println("<-" + reply);				
-			}
+		// convert back to byte array for framework
+		int[] replyArray = new int[] { MAGIC_BYTE1, MAGIC_BYTE2, 0, 0, 0};
 
-			this.reply = reply;
-			replyCondition.signal();
-		} finally {
-			lock.unlock();
+		if (isVerbose()) {
+			System.out.println("<-" + reply);				
 		}
-	}
-
-	public void waitForAck(final int timeout, int id) throws InterruptedException, NoAckException {	
-		lock.lockInterruptibly();
 		
-		try {
-			// because we only have one serial port I've adopted a simple convention to use the serial
-			// port for both debugging and control. Here's the convention:
-			// starts with OK continue with net
-			// starts with RETRY tx/no ack, try again
-			// starts with ERROR unrecoverable, fail
-			// anything else is just debug
+		// because we only have one serial port I've adopted a simple convention to use the serial
+		// port for both debugging and control. Here's the convention:
+		// starts with OK continue with net
+		// starts with RETRY tx err/no ack, try again
+		// starts with ERROR unrecoverable, fail
+		// anything else is just debug
+		
+		if (reply.startsWith("OK")) {
+			// parse id
+			int replyId = Integer.parseInt(reply.split(",")[1].trim());
 			
-			// keep waiting until we get ok or error, rest is debug
-			while (replyCondition.await(timeout, TimeUnit.SECONDS)) {				
-				if (reply.startsWith("OK")) {
-					// ok
-					// parse id
-					int replyId = Integer.parseInt(reply.split(",")[1].trim());
-					
-					if (replyId == id) {
-						// perfect!
-						return;
-					} else {
-						throw new NoAckException("Reply id " + replyId + " does not match the expected id " + id);	
-					}
-				} else if (reply.startsWith("RETRY")) {
-					throw new NoAckException("");
-				} else if (reply.startsWith("ERROR")) {
-					throw new RuntimeException(reply);
-				}
-			}
-			
-			throw new RuntimeException("Timeout");
-		} finally {
-			lock.unlock();
+			replyArray[2] = OK;
+			replyArray[3] = (replyId >> 8) & 0xff;
+			replyArray[4] = replyId & 0xff;
+		} else if (reply.startsWith("RETRY")) {
+			// hacky
+			replyArray[2] =	RETRY;
+		} else if (reply.startsWith("ERROR")) {
+			replyArray[2] = START_OVER;
+		}
+		
+		// if not debug message, add reply to queue
+		if (replyArray[2] != 0) {
+			addReply(replyArray);
 		}
 	}
 	
@@ -154,7 +136,7 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	
 	// TODO send nordic address
 	
-	public void process(String file, String device, int speed, String nordicAddress, int ackTimeout, int arduinoTimeout, int retriesPerPacket, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException {
+	public void process(String file, String device, int speed, String nordicAddress, int ackTimeout, int arduinoTimeout, int retriesPerPacket, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
 		Map<String,Object> context = Maps.newHashMap();
 		context.put("device", device);
 		context.put("speed", speed);
@@ -178,7 +160,7 @@ public class NordicSketchUploader extends SerialSketchUploader {
 		return "nRF24L01";
 	}
 	
-	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException {		
+	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {		
 		initLog4j();
 		
 //		if (false) {
@@ -186,8 +168,8 @@ public class NordicSketchUploader extends SerialSketchUploader {
 //		} else {
 			// run from eclipse for dev
 //			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
-//		new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 10, false, 5);
-			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 50, true, 5);
+			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 10, false, 5);
+//			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 50, false, 5);
 //		}
 	}
 }
