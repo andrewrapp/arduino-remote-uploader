@@ -136,7 +136,7 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	
 	// TODO send nordic address
 	
-	public void process(String file, String device, int speed, String nordicAddress, int ackTimeout, int arduinoTimeout, int retriesPerPacket, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
+	public void process(String file, String device, int speed, String nordicAddress, int ackTimeout, int arduinoTimeout, int retriesPerPacket, int delayBetweenRetriesMillis, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
 		Map<String,Object> context = Maps.newHashMap();
 		context.put("device", device);
 		context.put("speed", speed);
@@ -144,7 +144,7 @@ public class NordicSketchUploader extends SerialSketchUploader {
 		
 		// determine max data we can send with each programming packet
 		int pageSize = NORDIC_PACKET_SIZE - getProgramPageHeader(0, 0).length;
-		super.process(file, pageSize, ackTimeout, arduinoTimeout, retriesPerPacket, verbose, context);
+		super.process(file, pageSize, ackTimeout, arduinoTimeout, retriesPerPacket, delayBetweenRetriesMillis, verbose, context);
 	}
 
 	@Override
@@ -167,9 +167,9 @@ public class NordicSketchUploader extends SerialSketchUploader {
 //			runFromCmdLine(args);
 //		} else {
 			// run from eclipse for dev
-//			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, true, 5);
-			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 10, false, 5);
-//			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 50, false, 5);
+//			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, 250, true, 5);
+//			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 10, 250, true, 5);
+			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 50, 250, true, 5);
 //		}
 	}
 }

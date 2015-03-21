@@ -79,17 +79,17 @@ public abstract class SketchUploader extends SketchCore {
 	/**
 	 * Waits up to timeoutMillis for reply. if id does not match it will wait some more up to the timeout
 	 * 
-	 * @param timeoutMillis
+	 * @param timeoutSec
 	 * @param id
 	 * @throws NoAckException 
 	 * @throws InterruptedException 
 	 * @throws StartOverException 
 	 */
-	protected void waitForAck(final int timeoutMillis, int id) throws NoAckException, InterruptedException, StartOverException {
+	protected void waitForAck(final int timeoutSec, int id) throws NoAckException, InterruptedException, StartOverException {
 		long start = System.currentTimeMillis();
-		long timeLeft = timeoutMillis;
+		long timeLeftMillis = timeoutSec * 1000;
 		
-		while (timeoutMillis > 0) {
+		while (timeLeftMillis > 0) {
 			
 			boolean interrupted = false;
 			
@@ -99,8 +99,10 @@ public abstract class SketchUploader extends SketchCore {
 			
 			int[] reply = null;
 			
-			try {				
-				reply = ackQueue.poll(timeoutMillis, TimeUnit.MILLISECONDS);				
+			try {		
+				reply = ackQueue.poll(timeLeftMillis, TimeUnit.MILLISECONDS);			
+				// calc how much more time to wait
+				timeLeftMillis = timeoutSec * 1000 - (System.currentTimeMillis() - start);
 			} catch (InterruptedException e) {
 				interrupted = true;
 			}
@@ -115,7 +117,9 @@ public abstract class SketchUploader extends SketchCore {
 				throw new InterruptedException();
 			}
 			
-			if (reply != null) {
+			if (reply == null) {
+				//System.out.println("Timeout waiting for reply. timeleft is now " + timeLeftMillis);
+			} else {
 				switch (reply[2]) {
 				case OK:
 					int packetId = getPacketId(reply);
@@ -123,10 +127,9 @@ public abstract class SketchUploader extends SketchCore {
 					if (packetId != id) {
 						// ack id does not match tx id
 						// if the transport is configured for retries we can get multiple acks. in this case we got a late ack for the previous page or it sent multiple acks
-						timeLeft = timeoutMillis - (System.currentTimeMillis() - start);
 						// if it's negative that's just fine
 						if (verbose) {
-							System.out.println("Received ack for id " + packetId + " but expected id " + id + ".. ignoring and waiting for " + timeLeft + "ms");							
+							System.out.println("Received ack for id " + packetId + " but expected id " + id + ".. ignoring and waiting for " + timeLeftMillis + "ms");							
 						}
 						
 						// wait some more
@@ -148,7 +151,7 @@ public abstract class SketchUploader extends SketchCore {
 			}			
 		}
 		
-		throw new NoAckException("No ACK from transport device after " + timeoutMillis + " seconds");		
+		throw new NoAckException("No ACK from transport device after " + timeoutSec + " seconds");		
 	}
 	
 	public int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage, int timeout) {
@@ -217,15 +220,15 @@ public abstract class SketchUploader extends SketchCore {
 	 * 
 	 * @param file
 	 * @param pageSize
-	 * @param ackTimeout how long we wait for an ack before retrying
-	 * @param arduinoTimeout how long before arduino resets after no activity. value of zero will indicates no timeout
+	 * @param ackTimeoutSec how long we wait for an ack before retrying
+	 * @param arduinoTimeoutSec how long before arduino resets after no activity. value of zero will indicates no timeout
 	 * @param retriesPerPacket how many times to retry sending a page before giving up
 	 * @param verbose
 	 * @param context
 	 * @throws IOException
 	 * @throws StartOverException 
 	 */
-	public void process(String file, int pageSize, final int ackTimeout, int arduinoTimeout, int retriesPerPacket, final boolean verbose, final Map<String,Object> context) throws IOException {
+	public void process(String file, int pageSize, final int ackTimeoutSec, int arduinoTimeoutSec, int retriesPerPacket, int delayBetweenRetriesMillis, final boolean verbose, final Map<String,Object> context) throws IOException {
 		// page size is max packet size for the radio
 		final Sketch sketch = parseSketchFromIntelHex(file, pageSize);
 			
@@ -240,15 +243,15 @@ public abstract class SketchUploader extends SketchCore {
 			open(context);
 			
 			long start = System.currentTimeMillis();
-			final int[] startHeader = getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage(), arduinoTimeout);
+			final int[] startHeader = getStartHeader(sketch.getSize(), sketch.getPages().size(), sketch.getBytesPerPage(), arduinoTimeoutSec);
 				
 			System.out.println("Sending sketch to " + getName() + " radio, size " + sketch.getSize() + " bytes, md5 " + getMd5(sketch.getProgram()) + ", number of packets " + sketch.getPages().size() + ", and " + sketch.getBytesPerPage() + " bytes per packet, header " + toHex(startHeader));
 			
-			Retryer first = new Retryer(retriesPerPacket, "start packet") {
+			Retryer first = new Retryer(retriesPerPacket, delayBetweenRetriesMillis, "start packet") {
 				@Override
 				public void send() throws Exception {			
 					writeData(startHeader, context);
-					waitForAck(ackTimeout, sketch.getSize());					
+					waitForAck(ackTimeoutSec, sketch.getSize());					
 				}
 			};
 			
@@ -265,9 +268,9 @@ public abstract class SketchUploader extends SketchCore {
 //					}
 				}
 								
-				Retryer retry = new Retryer(retriesPerPacket,  "page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size()) {
+				Retryer retry = new Retryer(retriesPerPacket,  delayBetweenRetriesMillis, "page " + (page.getOrdinal() + 1) + " of " + sketch.getPages().size()) {
 					@Override
-					public void send() throws Exception {		
+					public void send() throws NoAckException, InterruptedException, StartOverException {		
 						try {
 							final int[] data = combine(getProgramPageHeader(page.getRealAddress16(), page.getData().length), page.getData());
 
@@ -288,7 +291,7 @@ public abstract class SketchUploader extends SketchCore {
 						}
 						
 						// don't send next page until this one is processed or we will overflow the buffer
-						waitForAck(ackTimeout, page.getRealAddress16());				
+						waitForAck(ackTimeoutSec, page.getRealAddress16());				
 					}
 				};
 				
@@ -309,11 +312,11 @@ public abstract class SketchUploader extends SketchCore {
 				System.out.println("Sending flash packet to radio " + toHex(flash));				
 			}
 			
-			Retryer last = new Retryer(retriesPerPacket, "flash start") {
+			Retryer last = new Retryer(retriesPerPacket, delayBetweenRetriesMillis, "flash start") {
 				@Override
 				public void send() throws Exception {			
 					writeData(flash, context);
-					waitForAck(ackTimeout, sketch.getSize());						
+					waitForAck(ackTimeoutSec, sketch.getSize());						
 				}
 			};
 			
@@ -349,19 +352,21 @@ public abstract class SketchUploader extends SketchCore {
 	
 	static abstract class Retryer {
 		private int retries;
+		private int delayBetweenRetriesMillis;
 		private String context;
 		
 
-		public Retryer(int retries, String context) {
+		public Retryer(int retries, int delayBetweenRetriesMillis, String context) {
 			if (retries <= 0) {
 				throw new IllegalArgumentException("Retries must be >= 1");
 			}
 			
 			this.retries = retries;
+			this.delayBetweenRetriesMillis = delayBetweenRetriesMillis;
 			this.context = context;
 		}
 	
-		public int sendWithRetries() throws StartOverException {
+		public int sendWithRetries() throws StartOverException, InterruptedException {
 			for (int i = 0 ;i < retries; i++) {
 				try {
 					// reset
@@ -374,8 +379,12 @@ public abstract class SketchUploader extends SketchCore {
 						throw new RuntimeException("Failed to send after " + (i + 1) + " attempts");
 					}
 					
+					Thread.sleep(delayBetweenRetriesMillis);
+					
 					continue;
 				} catch (StartOverException e) {
+					throw e;
+				} catch (InterruptedException e) {
 					throw e;
 				} catch (Exception e) {
 					throw new RuntimeException("Unable to retry due to unexpected exception", e);
@@ -386,7 +395,7 @@ public abstract class SketchUploader extends SketchCore {
 			throw new RuntimeException();
 		}
 		
-		public abstract void send() throws NoAckException, Exception;
+		public abstract void send() throws NoAckException, InterruptedException, Exception;
 	}
 
 	public boolean isVerbose() {
