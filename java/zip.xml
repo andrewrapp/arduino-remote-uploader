@@ -24,7 +24,8 @@
     	<includes>
     	    <include>librxtx*</include>
     	    <include>*.dll</include>
-    	    <include>sketch-loader.sh</include>
+    	    <include>xbee-uploader.sh</include>
+    	    <include>nordic-uploader.sh</include>
     	</includes>
     <fileMode>755</fileMode>	
       <outputDirectory>/</outputDirectory>

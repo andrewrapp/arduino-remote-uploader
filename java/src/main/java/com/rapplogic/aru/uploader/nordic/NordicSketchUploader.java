@@ -48,12 +48,7 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	
 	final Logger log = Logger.getLogger(NordicSketchUploader.class);
 	
-	final ReentrantLock lock = new ReentrantLock();
-	final Condition replyCondition = lock.newCondition();
-	
 	private StringBuilder stringBuilder = new StringBuilder();
-	
-	private String reply = null;
 	
 	private final int NORDIC_PACKET_SIZE = 32;
 	
@@ -208,6 +203,27 @@ public class NordicSketchUploader extends SerialSketchUploader {
 		}
 	}
 	
+	/**
+	 * ex ceylon:arduino-remote-uploader-1.0-SNAPSHOT andrew$ ./nordic-uploader.sh --sketch /Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex --serial-port /dev/tty.usbmodemfa131 --baud-rate 19200 arduino-timeout 0 --ack-timeout-ms 5000 --retries 50
+Experimental:  JNI_OnLoad called.
+Stable Library
+=========================================
+Native lib Version = RXTX-2.1-7
+Java lib Version   = RXTX-2.1-7
+Sending sketch to nRF24L01 radio, size 1102 bytes, md5 8e7a58576bdc732d3f9708dab9aea5b9, number of packets 43, and 26 bytes per packet, header ef,ac,10,a,4,4e,0,2b,1a,3c
+...........................................
+Successfully flashed remote Arduino in 3s, with 0 retries
+
+	 * @param args
+	 * @throws NumberFormatException
+	 * @throws IOException
+	 * @throws ParseException
+	 * @throws org.apache.commons.cli.ParseException
+	 * @throws PortInUseException
+	 * @throws UnsupportedCommOperationException
+	 * @throws TooManyListenersException
+	 * @throws StartOverException
+	 */
 	public static void main(String[] args) throws NumberFormatException, IOException, ParseException, org.apache.commons.cli.ParseException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {		
 		initLog4j();
 		new NordicSketchUploader().runFromCmdLine(args);

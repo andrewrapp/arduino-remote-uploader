@@ -194,7 +194,7 @@ public class SketchCore {
 		int[] program = parseIntelHex(fileName);
 		
 		List<Page> pages = Lists.newArrayList();		
-		System.out.println("Program length is " + program.length + ", page size is " + pageSize);
+		//System.out.println("Program length is " + program.length + " bytes, page size is " + pageSize + " bytes");
 		
 		int position = 0;
 		int count = 0;

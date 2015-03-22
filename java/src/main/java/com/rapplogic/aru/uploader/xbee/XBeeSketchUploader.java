@@ -199,6 +199,36 @@ public class XBeeSketchUploader extends SketchUploader {
 		}
 	}
 	
+	/**
+	 * ex
+ceylon:arduino-remote-uploader-1.0-SNAPSHOT andrew$ ./xbee-uploader.sh --sketch /Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex --serial-port /dev/tty.usbserial-A6005uRz --baud-rate 9600 --remote-xbee-address "0013A200408B98FF" --arduino-timeout 0 --ack-timeout-ms 5000 --retries 50
+Experimental:  JNI_OnLoad called.
+Stable Library
+=========================================
+Native lib Version = RXTX-2.1-7
+Java lib Version   = RXTX-2.1-7
+Sending sketch to xbee radio, size 1102 bytes, md5 8e7a58576bdc732d3f9708dab9aea5b9, number of packets 18, and 64 bytes per packet, header ef,ac,10,a,4,4e,0,12,40,0
+.......
+Failed to deliver packet [page 7 of 18] on attempt 1, reason No ACK from transport device after 5000ms.. retrying
+..
+Failed to deliver packet [page 8 of 18] on attempt 1, reason No ACK from transport device after 5000ms.. retrying
+...
+Failed to deliver packet [page 10 of 18] on attempt 1, reason No ACK from transport device after 5000ms.. retrying
+......
+Failed to deliver packet [page 15 of 18] on attempt 1, reason No ACK from transport device after 5000ms.. retrying
+....
+Failed to deliver packet [page 18 of 18] on attempt 1, reason No ACK from transport device after 5000ms.. retrying
+.
+Successfully flashed remote Arduino in 33s, with 5 retries
+ceylon:arduino-remote-uploader-1.0-SNAPSHOT andrew$ 
+ 
+	 * @param args
+	 * @throws NumberFormatException
+	 * @throws IOException
+	 * @throws XBeeException
+	 * @throws ParseException
+	 * @throws org.apache.commons.cli.ParseException
+	 */
 	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
 		initLog4j();		
 		XBeeSketchUploader xBeeSketchUploader = new XBeeSketchUploader();
