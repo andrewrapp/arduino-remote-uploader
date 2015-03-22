@@ -60,6 +60,8 @@ public abstract class SketchUploader extends SketchCore {
 	
 	private BlockingQueue<int[]> ackQueue = new LinkedBlockingQueue<int[]>();
 //	private final Thread main = Thread.currentThread();
+
+	private CliOptions cliOptions = new CliOptions();
 	
 	public SketchUploader() {
 
@@ -79,15 +81,15 @@ public abstract class SketchUploader extends SketchCore {
 	/**
 	 * Waits up to timeoutMillis for reply. if id does not match it will wait some more up to the timeout
 	 * 
-	 * @param timeoutSec
+	 * @param ackTimeoutMillis
 	 * @param id
 	 * @throws NoAckException 
 	 * @throws InterruptedException 
 	 * @throws StartOverException 
 	 */
-	protected void waitForAck(final int timeoutSec, int id) throws NoAckException, InterruptedException, StartOverException {
+	protected void waitForAck(final int ackTimeoutMillis, int id) throws NoAckException, InterruptedException, StartOverException {
 		long start = System.currentTimeMillis();
-		long timeLeftMillis = timeoutSec * 1000;
+		long timeLeftMillis = ackTimeoutMillis;
 		
 		while (timeLeftMillis > 0) {
 			
@@ -102,7 +104,7 @@ public abstract class SketchUploader extends SketchCore {
 			try {		
 				reply = ackQueue.poll(timeLeftMillis, TimeUnit.MILLISECONDS);			
 				// calc how much more time to wait
-				timeLeftMillis = timeoutSec * 1000 - (System.currentTimeMillis() - start);
+				timeLeftMillis = ackTimeoutMillis - (System.currentTimeMillis() - start);
 			} catch (InterruptedException e) {
 				interrupted = true;
 			}
@@ -151,7 +153,7 @@ public abstract class SketchUploader extends SketchCore {
 			}			
 		}
 		
-		throw new NoAckException("No ACK from transport device after " + timeoutSec + " seconds");		
+		throw new NoAckException("No ACK from transport device after " + ackTimeoutMillis + "ms");		
 	}
 	
 	public int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage, int timeout) {
@@ -220,7 +222,7 @@ public abstract class SketchUploader extends SketchCore {
 	 * 
 	 * @param file
 	 * @param pageSize
-	 * @param ackTimeoutSec how long we wait for an ack before retrying
+	 * @param ackTimeoutMillis how long we wait for an ack before retrying
 	 * @param arduinoTimeoutSec how long before arduino resets after no activity. value of zero will indicates no timeout
 	 * @param retriesPerPacket how many times to retry sending a page before giving up
 	 * @param verbose
@@ -228,7 +230,7 @@ public abstract class SketchUploader extends SketchCore {
 	 * @throws IOException
 	 * @throws StartOverException 
 	 */
-	public void process(String file, int pageSize, final int ackTimeoutSec, int arduinoTimeoutSec, int retriesPerPacket, int delayBetweenRetriesMillis, final boolean verbose, final Map<String,Object> context) throws IOException {
+	public void process(String file, int pageSize, final int ackTimeoutMillis, int arduinoTimeoutSec, int retriesPerPacket, int delayBetweenRetriesMillis, final boolean verbose, final Map<String,Object> context) throws IOException {
 		// page size is max packet size for the radio
 		final Sketch sketch = parseSketchFromIntelHex(file, pageSize);
 			
@@ -251,7 +253,7 @@ public abstract class SketchUploader extends SketchCore {
 				@Override
 				public void send() throws Exception {			
 					writeData(startHeader, context);
-					waitForAck(ackTimeoutSec, sketch.getSize());					
+					waitForAck(ackTimeoutMillis, sketch.getSize());					
 				}
 			};
 			
@@ -291,7 +293,7 @@ public abstract class SketchUploader extends SketchCore {
 						}
 						
 						// don't send next page until this one is processed or we will overflow the buffer
-						waitForAck(ackTimeoutSec, page.getRealAddress16());				
+						waitForAck(ackTimeoutMillis, page.getRealAddress16());				
 					}
 				};
 				
@@ -316,7 +318,7 @@ public abstract class SketchUploader extends SketchCore {
 				@Override
 				public void send() throws Exception {			
 					writeData(flash, context);
-					waitForAck(ackTimeoutSec, sketch.getSize());						
+					waitForAck(ackTimeoutMillis, sketch.getSize());						
 				}
 			};
 			
@@ -402,6 +404,10 @@ public abstract class SketchUploader extends SketchCore {
 		return verbose;
 	}
 	
+	public CliOptions getCliOptions() {
+		return cliOptions;
+	}
+
 	public void interrupt() {
 //		if (Thread.currentThread() != getMainThread()) {
 //			programInterrupt = true;

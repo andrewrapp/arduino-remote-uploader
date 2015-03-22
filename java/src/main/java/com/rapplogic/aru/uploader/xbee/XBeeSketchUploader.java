@@ -23,16 +23,13 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.util.Map;
 import java.util.Queue;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.CommandLineParser;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.PosixParser;
+import org.apache.commons.cli.OptionBuilder;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.rapplogic.aru.uploader.CliOptions;
 import com.rapplogic.aru.uploader.SketchUploader;
 import com.rapplogic.xbee.api.ApiId;
 import com.rapplogic.xbee.api.PacketListener;
@@ -59,82 +56,27 @@ public class XBeeSketchUploader extends SketchUploader {
 	
 	final Queue<int[]> replies = Lists.newLinkedList();
 		
-	// xbee just woke, send programming now!
+	// TODO xbee just woke, send programming!
 	//final int WAKE = 4;
 	
 	// block size for eeprom writes
+	// TODO make this configurable. series 1 radios can support a larger payload
 	public final int XBEE_PAGE_SIZE = 64;
-	
-	final ReentrantLock lock = new ReentrantLock();
-	final Condition rxPacketCondition = lock.newCondition();
+
+	private final XBee xbee = new XBee();
 	
 	public XBeeSketchUploader() {
 		super();
 	}
-	
-	private XBee xbee = new XBee();
-	
-	public void process(String file, String device, int speed, String xbeeAddress, final boolean verbose, int ackTimeoutSec, int arduinoTimeoutSec, int retriesPerPacket, int delayBetweenRetriesMillis) throws IOException {
+
+	public void processXBee(String file, String device, int speed, String xbeeAddress, final boolean verbose, int ackTimeoutMillis, int arduinoTimeoutSec, int retriesPerPacket, int delayBetweenRetriesMillis) throws IOException {
 		Map<String,Object> context = Maps.newHashMap();
 		context.put("device", device);
 		context.put("speed", speed);
 		XBeeAddress64 xBeeAddress64 = new XBeeAddress64(xbeeAddress);
 		context.put("xbeeAddress", xBeeAddress64);
 		
-		super.process(file, XBEE_PAGE_SIZE, ackTimeoutSec, arduinoTimeoutSec, retriesPerPacket, delayBetweenRetriesMillis, verbose, context);
-	}
-
-	private static void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException {
-		Options options = new Options();
-		
-		// cli doesn't allow single dashes in args which is insane!
-		final String sketch = "sketch_hex";
-		final String serialPort = "serial_port";
-		final String baudRate = "baud_rate";
-		final String xbeeAddress = "remote_xbee_address";
-		final String verboseArg = "verbose";
-		final String timeoutArg = "timeout";
-		
-		// add t option
-		options.addOption(sketch, true, "Path to compiled sketch (compiled by Arduino IDE)");
-		options.addOption(serialPort, true, "Serial port of XBee radio (e.g. /dev/tty.usbserial-A6005uRz)");
-		options.addOption(baudRate, true, "Baud rate of host XBee baud rate configuration");
-		options.addOption(xbeeAddress, true, "Address (64-bit) of remote XBee radio (e.g. 0013A21240AB9856)");
-		options.addOption(verboseArg, false, "Make chatty");
-		options.addOption(timeoutArg, false, "No reply timeout");
-		
-		CommandLineParser parser = new PosixParser();
-		CommandLine cmd = parser.parse(options, args);
-
-		boolean verbose = false;
-		
-		if (cmd.hasOption(verboseArg)) {
-			verbose = true;
-		}
-		
-		int baud = 0;
-		
-		try {
-			baud = Integer.parseInt(cmd.getOptionValue(baudRate));
-		} catch (Exception e) {
-			System.err.println("Baud rate is required and must be a positive integer");
-			return;
-		}
-		
-		int timeout = 10;
-
-		if (cmd.hasOption(timeoutArg)) {
-			try {
-				timeout = Integer.parseInt(cmd.getOptionValue(timeoutArg));
-			} catch (NumberFormatException e) {
-				System.err.println("Timeout must be a positive integer");
-				return;
-			}
-			// TODO validate size is within 1-255
-		}
-		
-		// cmd line
-		new XBeeSketchUploader().process(cmd.getOptionValue(sketch), cmd.getOptionValue(serialPort), baud, cmd.getOptionValue(xbeeAddress), verbose, timeout, 20, 10, 0);
+		super.process(file, XBEE_PAGE_SIZE, ackTimeoutMillis, arduinoTimeoutSec, retriesPerPacket, delayBetweenRetriesMillis, verbose, context);
 	}
 
 	@Override
@@ -174,6 +116,7 @@ public class XBeeSketchUploader extends SketchUploader {
 		});
 	}
 
+	final int TX_TIMEOUT = 500;
 	int counter = 1;
 	
 	@Override
@@ -183,11 +126,12 @@ public class XBeeSketchUploader extends SketchUploader {
 		
 		try {
 			// TODO make configurable timeout
-			xbee.sendSynchronous(new ZNetTxRequest(address, data), 500);			
+			xbee.sendSynchronous(new ZNetTxRequest(address, data), TX_TIMEOUT);			
 		} catch (XBeeTimeoutException e) {
-			System.out.println("No tx ack after 500ms");
+			// TODO interrupt ack thread
+			// the ack will timeout so no need to do anything with this error
+			System.out.println("No tx ack after " + TX_TIMEOUT + "ms");
 		}
-
 	}
 
 	@Override
@@ -199,23 +143,67 @@ public class XBeeSketchUploader extends SketchUploader {
 	protected String getName() {
 		return "xbee";
 	}
+
+	public final static String serialPort = "serial-port";
+	public final static String baudRate = "baud-rate";
+	public final String xbeeAddress = "remote-xbee-address";
+	
+	private void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException {
+		CliOptions cliOptions = getCliOptions();
+	
+		cliOptions.getOptions().addOption(
+				OptionBuilder
+				.withLongOpt(serialPort)
+				.hasArg()
+				.isRequired(true)
+				.withDescription("Serial port of of local xbee (host) radio) (e.g. /dev/tty.usbserial-A6005uRz). Required")
+				.create("p"));
+
+		cliOptions.getOptions().addOption(
+				OptionBuilder
+				.withLongOpt(baudRate)
+				.hasArg()
+				.isRequired(true)
+				.withType(Number.class)
+				.withDescription("Baud rate of local xbee (host) radio serial port. Required")
+				.create("b"));
+		
+		cliOptions.getOptions().addOption(
+				OptionBuilder
+				.withLongOpt(xbeeAddress)
+				.hasArg()
+				.isRequired(true)
+				.withDescription("Address (64-bit) of remote XBee radio (e.g. 0013A21240AB9856)")
+				.create("x"));
+		
+		CommandLine commandLine = cliOptions.parse(args);
+
+		if (commandLine != null) {
+			boolean verbose = false;
+			
+			if (commandLine.hasOption(CliOptions.verboseArg)) {
+				verbose = true;
+			}
+			
+			// cmd line
+			new XBeeSketchUploader().processXBee(
+					commandLine.getOptionValue(CliOptions.sketch), 
+					commandLine.getOptionValue(serialPort), 
+					cliOptions.getIntegerOption(baudRate), 
+					commandLine.getOptionValue(xbeeAddress), 
+					verbose,
+					cliOptions.getIntegerOption(CliOptions.ackTimeoutMillisArg),
+					cliOptions.getIntegerOption(CliOptions.arduinoTimeoutArg),
+					cliOptions.getIntegerOption(CliOptions.retriesPerPacketArg),
+					cliOptions.getIntegerOption(CliOptions.delayBetweenRetriesMillisArg));
+		}
+	}
 	
 	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
-		initLog4j();
-		
-		if (false) {
-			runFromCmdLine(args);
-		} else {
-			// run from eclipse for dev
-			// TODO timeout 
-			
-			// TODO timeout needs to be a divisible by the arduino time by the number of expected retries
-//			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5, 60, 0);
-			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5, 0, 500, 0);			
-			// bigger sketch
-//			new XBeeSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5, 0, 500, 0);
-			
-		}
+		initLog4j();		
+		XBeeSketchUploader xBeeSketchUploader = new XBeeSketchUploader();
+		xBeeSketchUploader.runFromCmdLine(args);
+		//new XBeeSketchUploader().processXBee("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbserial-A6005uRz", Integer.parseInt("9600"), "0013A200408B98FF", false, 5, 0, 500, 0);
 	}
 	
 }

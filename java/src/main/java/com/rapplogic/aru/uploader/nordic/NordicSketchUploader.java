@@ -30,11 +30,13 @@ import java.util.TooManyListenersException;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.OptionBuilder;
 import org.apache.log4j.Logger;
 
 import com.google.common.collect.Maps;
+import com.rapplogic.aru.uploader.CliOptions;
 import com.rapplogic.aru.uploader.serial.SerialSketchUploader;
-import com.rapplogic.xbee.api.XBeeException;
 
 /**
  * Uploads sketch to Nordic via the NordicSerialToSPI Sketch
@@ -136,11 +138,10 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	
 	// TODO send nordic address
 	
-	public void process(String file, String device, int speed, String nordicAddress, int ackTimeout, int arduinoTimeout, int retriesPerPacket, int delayBetweenRetriesMillis, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
+	public void processNordic(String file, String device, int speed, boolean verbose, int ackTimeout, int arduinoTimeout, int retriesPerPacket, int delayBetweenRetriesMillis) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
 		Map<String,Object> context = Maps.newHashMap();
 		context.put("device", device);
 		context.put("speed", speed);
-		context.put("nordicAddress", nordicAddress);
 		
 		// determine max data we can send with each programming packet
 		int pageSize = NORDIC_PACKET_SIZE - getProgramPageHeader(0, 0).length;
@@ -159,17 +160,57 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	protected String getName() {
 		return "nRF24L01";
 	}
+
+	public final static String serialPort = "serial-port";
+	public final static String baudRate = "baud-rate";
 	
-	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {		
-		initLog4j();
+	private void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
+		CliOptions cliOptions = getCliOptions();
+	
+		cliOptions.getOptions().addOption(
+				OptionBuilder
+				.withLongOpt(serialPort)
+				.hasArg()
+				.isRequired(true)
+				.withDescription("Serial port of of Arduino running NordicSPI2Serial sketch (e.g. /dev/tty.usbserial-A6005uRz). Required")
+				.create("p"));
+
+		cliOptions.getOptions().addOption(
+				OptionBuilder
+				.withLongOpt(baudRate)
+				.hasArg()
+				.isRequired(true)
+				.withType(Number.class)
+				.withDescription("Baud rate of Arduino. Required")
+				.create("b"));
 		
-//		if (false) {
-//			runFromCmdLine(args);
-//		} else {
-			// run from eclipse for dev
-//			new NordicSketchLoader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 60, 10, 250, true, 5);
-//			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 10, 250, true, 5);
-			new NordicSketchUploader().process("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), "????", 5, 0, 50, 250, true, 5);
-//		}
+		CommandLine commandLine = cliOptions.parse(args);
+
+		if (commandLine != null) {
+			boolean verbose = false;
+			
+			if (commandLine.hasOption(CliOptions.verboseArg)) {
+				verbose = true;
+			}
+			
+			//public void process(String file, int pageSize, final int ackTimeoutMillis, int arduinoTimeoutSec, int retriesPerPacket, int delayBetweenRetriesMillis, final boolean verbose, final Map<String,Object> context) throws IOException {
+			//????public void process(String file, String device, int speed, String nordicAddress, int ackTimeout, int arduinoTimeout, int retriesPerPacket, int delayBetweenRetriesMillis, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
+			// cmd line
+			new NordicSketchUploader().processNordic(
+					commandLine.getOptionValue(CliOptions.sketch), 
+					commandLine.getOptionValue(serialPort), 
+					cliOptions.getIntegerOption(baudRate), 
+					verbose,
+					cliOptions.getIntegerOption(CliOptions.ackTimeoutMillisArg),
+					cliOptions.getIntegerOption(CliOptions.arduinoTimeoutArg),
+					cliOptions.getIntegerOption(CliOptions.retriesPerPacketArg),
+					cliOptions.getIntegerOption(CliOptions.delayBetweenRetriesMillisArg));
+		}
+	}
+	
+	public static void main(String[] args) throws NumberFormatException, IOException, ParseException, org.apache.commons.cli.ParseException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {		
+		initLog4j();
+		new NordicSketchUploader().runFromCmdLine(args);
+//		new NordicSketchUploader().processNordic("/Users/andrew/Documents/dev/arduino-remote-uploader/resources/RAU-328-13k.hex", "/dev/tty.usbmodemfa131", Integer.parseInt("19200"), false, 5, 0, 50, 250);
 	}
 }
