@@ -30,6 +30,7 @@
 #define NORDIC_CE 10
 #define NORDIC_CS 11
 #define NORDIC_PACKET_SIZE 32
+#define RESET_PIN 9
 
 // NOTE: Diecimila/Arduino Pros (w/o CTS) don't auto reset, so need press reset button as soon as this appears in console output:
 //         Using Port                    : /dev/tty.usbserial-A4001tRI
@@ -59,8 +60,9 @@ RemoteUploader remoteUploader = RemoteUploader();
 extEEPROM eeprom = extEEPROM(kbits_256, 1, 64);
 
 void setup() {
-  // use leonardo (serial1)
-  remoteUploader.setup(&Serial1, &eeprom, 9);
+  // for Leonardo use &Serial1
+  // for atmega328/168 use &Serial
+  remoteUploader.setup(&Serial1, &eeprom, RESET_PIN);
   // use usb-serial for debug
   //remoteUploader.setDebugSerial(&Serial);
   

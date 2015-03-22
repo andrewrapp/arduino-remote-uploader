@@ -36,6 +36,7 @@
 // these can be swapped to any other free digital pins
 #define XBEE_SOFTSERIAL_TX_PIN 8
 #define XBEE_SOFTSERIAL_RX_PIN 7
+#define RESET_PIN 9
 
 // Specify the XBee coordinator address to send ACKs
 const uint32_t COORD_MSB_ADDRESS = 0x0013a200;
@@ -66,10 +67,12 @@ Stream* getXBeeSerial() {
 }
 
 void setup() {
-  // setup uploader with the serial, eeprom and reset pin
-  remoteUploader.setup(&Serial1, &eeprom, 9);
+  // for Leonardo use &Serial1
+  // for atmega328/168 use &Serial
+  remoteUploader.setup(&Serial1, &eeprom, RESET_PIN);
   // use usb-serial for debug
   //remoteUploader.setDebugSerial(&Serial);  
+  
   // TODO if setup_success != OK send error programming attempt
   // we only have one Serial port (UART) so need nss for XBee
   
