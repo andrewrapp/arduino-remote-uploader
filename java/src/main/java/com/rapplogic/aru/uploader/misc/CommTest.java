@@ -1,4 +1,4 @@
-package com.rapplogic.aru.uploader.xbee;
+package com.rapplogic.aru.uploader.misc;
 
 import java.io.IOException;
 
