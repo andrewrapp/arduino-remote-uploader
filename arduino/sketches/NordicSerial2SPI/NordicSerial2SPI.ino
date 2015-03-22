@@ -33,8 +33,6 @@
 #define NORDIC_CS 11
 #define NORDIC_PACKET_SIZE 32
 
-#define TX_LOOP_RETRIES 10
-
 #define SUCCESS 0
 #define TX_FAILURE 1
 #define ACK_FAILURE 2
@@ -81,7 +79,7 @@ void setup(void) {
   // doesn't say what the default is
   radio.setPALevel(RF24_PA_MAX);
   
-  // try a differnt speed RF24_1MBPS
+  // try a different speed RF24_1MBPS
   radio.setDataRate(RF24_250KBPS);
   
   //pick an arbitrary channel. default is 4c
