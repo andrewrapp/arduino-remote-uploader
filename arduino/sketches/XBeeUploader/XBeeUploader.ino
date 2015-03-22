@@ -69,7 +69,7 @@ void setup() {
   // setup uploader with the serial, eeprom and reset pin
   remoteUploader.setup(&Serial1, &eeprom, 9);
   // use usb-serial for debug
-  remoteUploader.setDebugSerial(&Serial);  
+  //remoteUploader.setDebugSerial(&Serial);  
   // TODO if setup_success != OK send error programming attempt
   // we only have one Serial port (UART) so need nss for XBee
   

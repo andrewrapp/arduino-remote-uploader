@@ -62,7 +62,7 @@ void setup() {
   // use leonardo (serial1)
   remoteUploader.setup(&Serial1, &eeprom, 9);
   // use usb-serial for debug
-  remoteUploader.setDebugSerial(&Serial);
+  //remoteUploader.setDebugSerial(&Serial);
   
   radio.begin();
   radio.setChannel(0x8);
@@ -95,7 +95,7 @@ int sendReply(uint8_t status, uint16_t id) {
   int success = 0;
   
   if (!ok) {
-    remoteUploader.getDebugSerial()->println("ACK TX fail");
+    //remoteUploader.getDebugSerial()->println("ACK TX fail");
     success = -1;
   }
   
