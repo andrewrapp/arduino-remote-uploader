@@ -38,7 +38,7 @@
 #define XBEE_SOFTSERIAL_RX_PIN 7
 #define RESET_PIN 9
 
-// Specify the XBee coordinator address to send ACKs
+// Specify the XBee coordinator address to send ACKs SH + SL
 const uint32_t COORD_MSB_ADDRESS = 0x0013a200;
 const uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
 
