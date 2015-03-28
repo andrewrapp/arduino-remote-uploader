@@ -25,6 +25,8 @@
 #include <Wire.h>
 #include <RemoteUploader.h>
 
+// NOTE: Leonardo seems to have no problem powering the xbee ~50ma and and a Diecimila
+
 // TODO support XBee series1
 // should we proxy serial rx/tx to softserial (xbee). if you want to use the XBee from the application arduino set to true -- if only using xbee for programming set to false
 #define PROXY_SERIAL true
@@ -69,8 +71,8 @@ Stream* getXBeeSerial() {
 void setup() {
   // for Leonardo use &Serial1
   // for atmega328/168 use &Serial
-  remoteUploader.setup(&Serial1, &eeprom, RESET_PIN);
-  // use usb-serial for debug
+  remoteUploader.setup(&Serial, &eeprom, RESET_PIN);
+  //configure debug if an additional Serial port is available. Use Serial with Leonardo
   //remoteUploader.setDebugSerial(&Serial);  
   
   // TODO if setup_success != OK send error programming attempt

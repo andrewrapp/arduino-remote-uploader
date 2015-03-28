@@ -32,27 +32,25 @@
 
 // TODO how do we pass in DEBUG as a parameter??
 
-// Enable debugging statments on any arduino that has multiple serial ports. Must also call setDebugSerial()
+// Enable debugging statments on any arduino that has multiple serial ports. Must also call setDebugSerial(..)
 // Never set to Serial on atmega328/168 as it needs Serial for programming and it will certainly fail on flash()
 // IMPORTANT: you must have the serial monitor open when usb debug enabled or will fail after a few packets!
 #define DEBUG false
 
-// Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
-// Must also enable a debug option (DEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing
+// WARNING!! Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
+// Must also enable a DEBUG when using this. With atmega328/168 you would need to use SoftSerial
 #define VERBOSE false
 
 // The remaining config should be fine for vast majority of cases
-// Currently it goes out of memory on atmega328/168 with VERBOSE true. TODO shorten strings so it doesn't go out of memory
-// Must also enable a debug option (DEBUG or NSSDEBUG) with VERBOSE true. With atmega328/168 you may only use NSSDEBUG as the only serial port is for flashing
 
-// only 115200 works with optiboot
+// Don't change! only 115200 works with optiboot
 #define OPTIBOOT_BAUD_RATE 115200
 // how long to wait for a reply from optiboot before timeout (ms)
 #define OPTIBOOT_READ_TIMEOUT 1000
 
 #define PROG_PAGE_SIZE 128
 // this can be reduced to the maximum packet size + header bytes
-// memory shouldn't be an issue on the programmer since it only should ever run this sketch!
+// however memory shouldn't be an issue on the programmer
 
 #define BUFFER_SIZE PROG_PAGE_SIZE + 3
 #define READ_BUFFER_SIZE PROG_PAGE_SIZE + 3
@@ -64,9 +62,9 @@
 
 // ==================================================================END CONFIG ==================================================================
 
-// TODO define negative error codes for sketch only. translate to byte error code and send to XBee
+// TODO define negative error codes for sketch only. translate to positive error code and send to host
 
-// we don't need magic bytes if we're not proxying but they are using only 5% of packet with nordic and much less with xbee
+// we don't need magic bytes if we're not proxying but they are using a fraction of the packet
 // any packet that has byte1 and byte 2 that equals these is a programming packet
 #define MAGIC_BYTE1 0xef
 #define MAGIC_BYTE2 0xac
@@ -89,13 +87,12 @@
 // every packet must return exactly one reply: OK or NOT OK. NOT OK is anything > 1
 // TODO make sure only one reply code is sent!
 #define OK 1
-//got prog data but no start. host needs to start over
+//tell host to start over
 #define START_OVER 2
 #define TIMEOUT 3
 #define FLASH_ERROR 4
 #define EEPROM_ERROR 5
 #define EEPROM_WRITE_ERROR 6
-// TODO these should be bit sets on FLASH_ERROR
 #define EEPROM_READ_ERROR 7
 // serial lines not connected or reset pin not connected
 #define NOBOOTLOADER_ERROR 8

@@ -27,17 +27,13 @@
 
 #include "HardwareSerial.h"
 
-// TODO check debug serial for null so we don't crash if debug is accidently set to true
+// TODO check debug serial for null so we don't crash if debug is accidently set to true. also check that it doesn't equal the programmer serial port
 
+// The app arduino keeps running while we collect the program and write to eeprom. it is only unavailable for this brief time when we flash it.
 
-// Leonardo (usb-serial) is required for DEBUG. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true and it fails in unexpected ways! :(
-// NOTE: Leonardo seems to have no problem powering the xbee ~50ma and Diecimila!
+// I've only tested debug with a Leonardo (usb-serial) but SoftSerial or another UART on a mega should work. Due to my flagrant use of Serial.println, the Leonardo may go out of sram if VERBOSE is true and it fails in unexpected ways! :(
 
-// WIRING:
-// unfortunately we can't use an xbee shield because we need the serial port for programming. Instead the XBee must use softserial. You can use the shield and wire the 5V,GND,TX/RX of the shield to Arduino
-// Optiboot needs 115.2 so softserial is not an option
-// Consider modifying optiboot to run @ 19.2 so softserial is viable (on programming, still of course need serial on target)
-
+// EEPROM WIRING:
 /*
 TAKE NOTE: I2C pins vary depending on the Arduino board! (see below)
 
@@ -65,14 +61,16 @@ Arduino Pro
 VCC -> 5V regulated
 GND -> GND
 
-NOTE: when uploading a new version of this firmware to a Pro, remember to disconnect the serial lines from other arduino or upload will fail. 
+NOTE: when uploading a new version of this firmware to a Pro via a FTDI board/cable, remember to disconnect the serial lines from other arduino or upload will fail. 
 Also you'll need to press the reset button if you don't have CTS connected (for auto-reset).
 Leonardo is more flexible since upload occurs over usb-serial
 
 TROUBLESHOOTING
-- if flashInit fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify Serial1 (UART) wired correction and is at 115200
-- check every pin connection, reset, xbee tx/rx (remember arduino tx goes to xbee rx), eeprom, power. make sure all powered devices share a com
+- if flashInit fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify the serial port is wired correctly and is at 115200
+- check every pin connection, reset, tx/rx (remember arduino tx goes to the other arduino rx), eeprom, power. make sure all powered devices share a common ground
 - connection issues: check your solder joints. try different breadboard positions, try different breadboard, try different Arduinos
+
+Example successful flash:
 
 Ready!
 *Received start packet
@@ -85,11 +83,6 @@ Flashed in 1571ms
 // ================================================================== START CONFIG ==================================================================
 
 // =========================================================================
-
-
-
-// TODO review error codes and handling
-
 
 RemoteUploader::RemoteUploader() {
   // defaults//zero state
@@ -698,19 +691,12 @@ int RemoteUploader::process(uint8_t packet[]) {
               // TODO we already processed this. just send OK
           } else if ((address + EEPROM_OFFSET_ADDRESS) > maxEEPROMAddress) {
             // **ERROR: current address 10512 but max is 10448
-
-
             // attempt to write beyond current eeprom address
             // this would result in a gap in data and would ultimately fail, so reject
             #if (DEBUG)
               getDebugSerial()->print("ERROR: current address "); getDebugSerial()->print((address + EEPROM_OFFSET_ADDRESS), DEC); getDebugSerial()->print(" but max is "); getDebugSerial()->println(maxEEPROMAddress, DEC);            
             #endif
             
-            // FIXME still getting this
-            // need a hash of each address to know when all have been written
-            // could clear eeprom before read each address to know if it has been written
-
-            // still getting
             return ADDRESS_SKIP_ERROR;
           }
 
@@ -838,7 +824,7 @@ int RemoteUploader::setup(HardwareSerial* _serial, extEEPROM* _eeprom, uint8_t _
     return EEPROM_ERROR;
   } 
   
-  // only necessary for leonardo. safe for others
+  // only necessary for Leonardo. safe for others
   while (!Serial);
   
   return 0;
