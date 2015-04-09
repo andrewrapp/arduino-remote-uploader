@@ -5,7 +5,7 @@
 SoftwareSerial espSerial(ESP_RX, ESP_TX);
 
 #define readLen 6
-#define DEBUG
+//#define DEBUG
 #define BUFFER_SIZE 128
 #define LISTEN_PORT 1111
 
@@ -25,13 +25,8 @@ void setup() {
   espSerial.begin(9600); // Soft serial connection to ESP8266
   
   #ifdef DEBUG
-  Serial.begin(9600); while(!Serial); // UART serial debug
+    Serial.begin(9600); while(!Serial); // UART serial debug
   #endif
-  
-//  #ifdef DEBUG
-//    Serial.println("Waiting 3s");
-//    delay(3000);  
-//  #endif
 
   configureEsp8266();
 }
@@ -67,10 +62,12 @@ AT+CPSRVEz(197)(177)(138)(154)(154)(178)(254)(13)(13)(10)(13)(10)OK(13)(10)<--[2
   sendCifsr();
   sendCipmux();
   sendCipServer();
-  
+    
   resetCbuf(cbuf, BUFFER_SIZE);
     
   lastReset = millis();
+  
+//  Serial.println("configure done");
 }
 
 int sendReset() {
@@ -286,6 +283,8 @@ int readFor(int timeout) {
           Serial.write(in);
         #endif
       }
+      
+      delay(50);
     } else {
       waiting = true;
     }
@@ -380,6 +379,12 @@ void handleData() {
     return;
   }
  
+ 
+ 
+  delay(100);
+ 
+ 
+ 
   // read input into data buffer
   int rlen = espSerial.readBytes(cbuf, len);
   
@@ -409,6 +414,8 @@ void handleData() {
   espSerial.print("AT+CIPSEND="); espSerial.print(channel); espSerial.print(","); espSerial.print(sendLen); espSerial.print("\r\n");
   //flush wrecks this device
   //espSerial.flush();
+  
+  delay(100);
   
   // replies with
   //(13)(10)(13)(10)OK(13)(10)AT+CIPSEND=0,4(13)(13)(10)>(32)<--[27]
@@ -452,11 +459,10 @@ void handleData() {
   #ifdef DEBUG 
     Serial.println("CIPSEND reply");
     printCbuf(cbuf, cmdLen);
-    Serial.println("");
-    // TODO check for AT+CIPSEND or not ERROR
-    Serial.println("Sending");    
   #endif
-          
+  
+  delay(100);
+  
   // send data to client
   espSerial.print(response);
   espSerial.print("\r\n");
@@ -516,8 +522,6 @@ void loop() {
   // the tricky part of AT commands is they vary in length and format, so we don't know how much to read
   // with 6 chars we should be able to identify most allcommands
   if (espSerial.available() >= readLen) {
-    //Serial.setTimeout()
-
     #ifdef DEBUG      
       Serial.print("\n\nSerial available "); Serial.println(espSerial.available());
     #endif
@@ -533,6 +537,7 @@ void loop() {
     if (strstr(cbuf, "+IPD") != NULL) {
       //(13)(10)+IPD,0,4:hi(13)(10)(13)(10)OK(13)(10)      
       handleData();
+      delay(500);
     } else if (strstr(cbuf, ",CONN") != NULL) {
       //0,CONNECT(13)(10)      
       handleConnected();
@@ -542,6 +547,7 @@ void loop() {
       #ifdef DEBUG
         Serial.println("Unexpected..");
       #endif
+      
       readFor(2000);
       
       // assume the worst and reset
@@ -549,8 +555,7 @@ void loop() {
     }
     
     if (false) {
-      // health check
-        
+      // health check        
     }
     
     resetCbuf(cbuf, BUFFER_SIZE);
