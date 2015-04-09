@@ -7,6 +7,12 @@ SoftwareSerial espSerial(ESP_RX, ESP_TX);
 #define readLen 6
 #define DEBUG
 #define BUFFER_SIZE 128
+#define LISTEN_PORT 1111
+
+#define RESET_MINS 15
+
+long resetEvery = RESET_MINS * 60000;
+long lastReset = 0;
 
 char cbuf[BUFFER_SIZE];
 //uint8_t data[64];
@@ -17,22 +23,33 @@ bool connected[10];
 
 void setup() {
   espSerial.begin(9600); // Soft serial connection to ESP8266
-  Serial.begin(9600); while(!Serial); // UART serial debug
   
   #ifdef DEBUG
-    Serial.println("Waiting 3s");
-    delay(3000);  
+  Serial.begin(9600); while(!Serial); // UART serial debug
   #endif
+  
+//  #ifdef DEBUG
+//    Serial.println("Waiting 3s");
+//    delay(3000);  
+//  #endif
 
-  // TODO periodic reset and setup
-  
-  
+  configureEsp8266();
+}
+
+void configureEsp8266() {
 /*
+AT+RST
+AT+RST(13)(13)(10)(13)(10)OK(13)(10).|(209)N;(255)P:L(179)(10)BD;(127)6(152)(31)u(21)(204).(233)'(19)F(171)(140)F(29)j(150)(194)(168)HHWV.V(175)H(248)<--[58c],[1925ms],[4w]
 Sending AT+CWMODE=3
-AT+CWMODE=3(13)(13)(10)(13)(10)OK(13)(10)
+AT+CWMODE=3(13)(13)(10)(13)(10)OK(13)(10)<--[20c],[24ms],[1w]
 Sending AT+CIPMUX=1
 // if connected already
 AT+CIPMUX=1(13)(13)(10)link(32)is(32)builded(13)(10)
+// or
+AT+CIPMUX=1(13)(13)(10)(13)(10)OK(13)(10)<--[20c],[25ms],[1w]
+
+AT+CIFSR(13)(13)(10)+CIFSR:APIP,"192.168.4.1"(13)(10)+CIFSR:APMAC,"1a:fe:34:9b:a7:4c"(13)(10)+CRTP0..(13)CSSAC1:::::c(10)O(10)<--[96c],[160ms],[1w]
+
 Sending AT+CIPSERVER=1
 AT+IPERV(164)(245)(197)b(138)(154)(154)(178)(13)(13)(10)no(32)change(13)(10)
 // but sometimes get
@@ -41,41 +58,132 @@ AT+C(160)M(21)IY(21)I(245)(139)b(154)(254)6(13)(13)(10)no(32)change(13)(10)
 AT+C(160)M(21)IY(21)I(245)(139)b(154)36(13)(13)(10)no(32)change(13)(10)
 // OR
 AT+CPSEVE=1,f(205)(217)j(254)(13)(10)no(32)change(13)(10)
+// OR
+AT+CPSRVEz(197)(177)(138)(154)(154)(178)(254)(13)(13)(10)(13)(10)OK(13)(10)<--[26c],[22ms],[0w]
 */
 
-//  Serial.println("Sending AT+RST");
-//  espSerial.print("AT+RST\r\n");
-//  readFor(3000);  
+  sendReset();
+  sendCwmode();
+  sendCifsr();
+  sendCipmux();
+  sendCipServer();
+  
+  resetCbuf(cbuf, BUFFER_SIZE);
+    
+  lastReset = millis();
+}
 
+int sendReset() {
   #ifdef DEBUG
-    Serial.println("Sending AT+CWMODE=3");
+    Serial.println("->RST");  
+  #endif
+  
+  espSerial.print("AT+RST\r\n");
+  readFor(3000);  
+  
+  if (strstr(cbuf, "OK") == NULL) {
+      #ifdef DEBUG
+        Serial.println("RST fail");        
+      #endif
+      
+      return 0;
+  }
+  
+  return 1;
+}  
+
+int sendCwmode() {
+  #ifdef DEBUG
+    Serial.println("->CWMODE=3");
   #endif
   
   espSerial.print("AT+CWMODE=3\r\n");
   readFor(100);
-
-//  Serial.println("Sending AT+CIFSR");
-//  espSerial.print("AT+CIFSR\r\n");
-//  readFor(5000);
-
-  #ifdef DEBUG
-    Serial.println("\nSending AT+CIPMUX=1");  
-  #endif    
-  espSerial.print("AT+CIPMUX=1\r\n");
-  // if still connected: AT+CIPMUX=1(13)(13)(10)link(32)is(32)builded(13)(10)
-  readFor(100);  
-  // inconsistent but sometimes returns no(32)change(13)
-
-  #ifdef DEBUG
-  Serial.println("\nSending AT+CIPSERVER=1");    
-  #endif
   
-  espSerial.print("AT+CIPSERVER=1,1336\r\n");
-  readFor(100);
+  if (strstr(cbuf, "OK") == NULL) {
+      #ifdef DEBUG
+        Serial.println("CWMODE fail");        
+      #endif    
+      
+      return 0;
+  }
   
-  resetCbuf(cbuf, BUFFER_SIZE);
+  return 1;
 }
 
+
+int sendCifsr() {
+  #ifdef DEBUG
+    Serial.println("->CIFSR");
+  #endif
+  
+  // on start we could publish our ip address to a known entity
+  // or, get from router, or use static ip, 
+  espSerial.print("AT+CIFSR\r\n");
+  readFor(500);
+  
+  // TODO parse ip address
+  if (strstr(cbuf, "AT+CIFSR") == NULL) {
+      #ifdef DEBUG
+        Serial.println("CIFSR fail");        
+      #endif    
+      
+      return 0;
+  }
+  
+  return 1;
+}
+
+int sendCipmux() {
+  #ifdef DEBUG
+    Serial.println("\n->CIPMUX=1");  
+  #endif    
+  
+  espSerial.print("AT+CIPMUX=1\r\n"); 
+  
+  // if still connected: AT+CIPMUX=1(13)(13)(10)link(32)is(32)builded(13)(10)
+  readFor(100);    
+
+  if (!(strstr(cbuf, "OK") != NULL || strstr(cbuf, "builded"))) {
+      #ifdef DEBUG
+        Serial.println("CIPMUX fail");        
+      #endif    
+      
+      return 0;
+  }
+  
+  return 1;
+}
+
+int sendCipServer() {
+  #ifdef DEBUG
+    Serial.println("\n->CIPSERVER=1");    
+  #endif
+  
+  espSerial.print("AT+CIPSERVER=1,"); espSerial.print(LISTEN_PORT); espSerial.print("\r\n");  
+  
+  readFor(100);  
+  
+  if (!(strstr(cbuf, "OK") != NULL || strstr(cbuf, "no change"))) {
+      #ifdef DEBUG
+        Serial.println("CIPSERVER fail");        
+      #endif    
+      
+      return 0;
+  }  
+  
+  return 1;
+}
+
+void checkReset() {
+  if (millis() - lastReset > resetEvery) {
+    #ifdef DEBUG
+      Serial.println("Resetting");
+    #endif
+    
+    configureEsp8266();
+  } 
+}
 // AT+RST ends with (168)HHWV.V(175)H(248)
 int readUntilEndsWith(uint8_t pattern[]) {
   return -1;
@@ -97,6 +205,7 @@ int clearSerial() {
   return count;
 }
 
+#ifdef DEBUG
 void printCbuf(char cbuf[], int len) {
   for (int i = 0; i < len; i++) {
       if (cbuf[i] <= 32 || cbuf[i] >= 127) {
@@ -107,6 +216,7 @@ void printCbuf(char cbuf[], int len) {
       }
   } 
 }
+#endif
 
 int readChars(char cbuf[], int startAt, int len, int timeout) {  
   int pos = startAt;
@@ -150,6 +260,8 @@ int readFor(int timeout) {
     Serial.println("-->");
   #endif
   
+  resetCbuf(cbuf, BUFFER_SIZE);
+  
   while (millis() - start < timeout) {          
     if (espSerial.available() > 0) {
       if (waiting) {
@@ -179,6 +291,7 @@ int readFor(int timeout) {
     }
   }
   
+  // null terminate
   cbuf[pos] = 0;
   
   #ifdef DEBUG
@@ -209,17 +322,24 @@ void handleData() {
   //(13)(10)+IPD,0,4:hi(13)(10)(13)(10)OK(13)(10)
   
   #ifdef DEBUG
-    Serial.println("\nGot IPD");
+    Serial.println("\nGot data");
   #endif
-  
+
   //ex +IPD,0,10:hi(32)again(13)
   // cbuf ,0,10:    
+  
+  // debug output
+//  readFor(1000);
+//  return;
   
   // serial buffer is at comma after D
   char* ipd = cbuf + readLen;
   
   // max channel + length + 2 commas + colon = 9
   int len = espSerial.readBytesUntil(':', ipd, 9);
+  
+  //Serial.print("read char to : "); Serial.println(len);
+  // space ,0,1:(32)(13)(10)OK(13)(10)(13)(10)
   
   // parse channel
   // null term after channel for atoi
@@ -232,15 +352,12 @@ void handleData() {
     Serial.print("Channel "); Serial.println(channel);
   #endif
   
+  //ipd[9] = 0;
   // length starts at pos 3
   len = atoi(ipd + 3);
   
   // subtract 2, don't want lf/cr
   len-=2;
-
-  #ifdef DEBUG
-    Serial.print("IPD: "); Serial.println(cbuf);
-  #endif
   
   if (len <= 0) {
     #ifdef DEBUG
@@ -279,8 +396,7 @@ void handleData() {
   #ifdef DEBUG
     Serial.print("Data:");  
     printCbuf(cbuf, len);
-    Serial.println("");
-    Serial.println("Echoing");    
+    Serial.println("");  
   #endif
           
   char response[] = "ok";
@@ -289,11 +405,9 @@ void handleData() {
   
   int sendLen = strlen(response) + 2;
   
-  // help with busy reply???
-  delay(500);
-  
   // send AT command with channel and message length
   espSerial.print("AT+CIPSEND="); espSerial.print(channel); espSerial.print(","); espSerial.print(sendLen); espSerial.print("\r\n");
+  //flush wrecks this device
   //espSerial.flush();
   
   // replies with
@@ -307,8 +421,10 @@ void handleData() {
   int rCmdLen = readChars(cbuf, 0, cmdLen, 5000);
   
   if (rCmdLen == -1) {
+    #ifdef DEBUG
+      Serial.println("AT+CIPSEND timeout");
+    #endif
     
-    Serial.println("AT+CIPSEND timeout");
     return;
   } else if (rCmdLen != cmdLen) {
     #ifdef DEBUG
@@ -344,7 +460,7 @@ void handleData() {
   // send data to client
   espSerial.print(response);
   espSerial.print("\r\n");
-  //espSerial.flush();
+  espSerial.flush();
   
   // reply
   //ok(13)(13)(10)SEND(32)OK(13)(10)<--[14]
@@ -403,7 +519,7 @@ void loop() {
     //Serial.setTimeout()
 
     #ifdef DEBUG      
-      Serial.println("Read serial");
+      Serial.print("\n\nSerial available "); Serial.println(espSerial.available());
     #endif
     
     readChars(cbuf, 0, readLen, 1000);
@@ -423,16 +539,24 @@ void loop() {
     } else if (strstr(cbuf, "CLOS") != NULL) {
       handleClosed();
     } else {
-      // TODO get rest of string and print
-      // unexpected print 
       #ifdef DEBUG
         Serial.println("Unexpected..");
       #endif
-      readFor(100);
+      readFor(2000);
+      
+      // assume the worst and reset
+      configureEsp8266();
     }
-
+    
+    if (false) {
+      // health check
+        
+    }
+    
+    resetCbuf(cbuf, BUFFER_SIZE);
     // discard remaining. should not be any remaining
     clearSerial();      
-    //resetCbuf(cbuf, 129);
   }
+  
+  checkReset();  
 }
