@@ -10,8 +10,7 @@ public class WifiSocketTest {
 
 	private final Object lock = new Object();
 	private StringBuilder stringBuilder = new StringBuilder();
-	private String reply;
-	
+
 	public WifiSocketTest() throws UnknownHostException, IOException, InterruptedException {
 		
 		Socket socket = new Socket("192.168.1.115", 1111);
@@ -23,17 +22,7 @@ public class WifiSocketTest {
 		System.out.println("So timeout " + socket.getSoTimeout());
 		System.out.println("Tcp nodelay " + socket.getTcpNoDelay());
 		
-		//socket.setReceiveBufferSize(146808);
-		//socket.setSendBufferSize(146808);
-		
-		
-		//socket.setKeepAlive(true);
-		// bad sends each char in IPD
-//		socket.setTcpNoDelay(true);
-		
-		//socket.setSendBufferSize(1024);
-		
-		OutputStream outputStream = socket.getOutputStream();
+		final OutputStream outputStream = socket.getOutputStream();
 		final InputStream inputStream = socket.getInputStream();
 		
 		Thread t = new Thread(new Runnable() {
@@ -95,7 +84,8 @@ public class WifiSocketTest {
 			}
 			
 			// needs a delay to get it's ducks in a row before sending again
-			Thread.sleep(50);
+			// increase if not acking
+			Thread.sleep(100);
 		}
 
 		Thread.sleep(2000);
