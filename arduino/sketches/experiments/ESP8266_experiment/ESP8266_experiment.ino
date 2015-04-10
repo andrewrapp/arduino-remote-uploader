@@ -5,6 +5,7 @@
 SoftwareSerial espSerial(ESP_RX, ESP_TX);
 
 #define readLen 6
+// fails without debug enabled, what??
 #define DEBUG
 #define BUFFER_SIZE 128
 #define LISTEN_PORT "1111"
@@ -14,6 +15,7 @@ SoftwareSerial espSerial(ESP_RX, ESP_TX);
 #define WIFI_PASSWORD ""
 
 #define RESET_MINS 15
+//#define SEND_AT_EVERY_MINS 1
 
 long resetEvery = RESET_MINS * 60000;
 long lastReset = 0;
@@ -90,43 +92,35 @@ void debugLoop(void) {
 
 void configureEsp8266() {
 /*
-AT+RST
-AT+RST(13)(13)(10)(13)(10)OK(13)(10).|(209)N;(255)P:L(179)(10)BD;(127)6(152)(31)u(21)(204).(233)'(19)F(171)(140)F(29)j(150)(194)(168)HHWV.V(175)H(248)<--[58c],[1925ms],[4w]
-Sending AT+CWMODE=3
-AT+CWMODE=3(13)(13)(10)(13)(10)OK(13)(10)<--[20c],[24ms],[1w]
-Sending AT+CIPMUX=1
-// if connected already
-AT+CIPMUX=1(13)(13)(10)link(32)is(32)builded(13)(10)
-// or
+<---
+AT(13)(13)(10)(13)(10)OK(13)(10)<--[11c],[14ms],[1w]
+<---
+AT+RST(13)(13)(10)(13)(10)OK(13)(10).|(209)N;(255)P:L(179)(10)BD;G8\(21)E5(205)N^f(5)(161)O'}5"B(201)(168)HHWV.V(175)H(248)<--[58c],[1926ms],[4w]
+<---
+AT+CWMODE=3(13)(13)(10)(13)(10)OK(13)(10)<--[20c],[25ms],[1w]
+<---
+AT+CIFSR(13)(13)(10)+CIFSR:APIP,"192.168.4.1"(13)(10)+CIFSR:APMAC,"1a:fe:34:9b:a7:4c"(13)(10)+CIRTP0.0(10)CRSM,8e4ba4(13)(10)(13)<--[96c],[164ms],[1w]
+<---
 AT+CIPMUX=1(13)(13)(10)(13)(10)OK(13)(10)<--[20c],[25ms],[1w]
-
-AT+CIFSR(13)(13)(10)+CIFSR:APIP,"192.168.4.1"(13)(10)+CIFSR:APMAC,"1a:fe:34:9b:a7:4c"(13)(10)+CRTP0..(13)CSSAC1:::::c(10)O(10)<--[96c],[160ms],[1w]
-
-Sending AT+CIPSERVER=1
-AT+IPERV(164)(245)(197)b(138)(154)(154)(178)(13)(13)(10)no(32)change(13)(10)
-// but sometimes get
-AT+C(160)M(21)IY(21)I(245)(139)b(154)(254)6(13)(13)(10)no(32)change(13)(10)
-// OR
-AT+C(160)M(21)IY(21)I(245)(139)b(154)36(13)(13)(10)no(32)change(13)(10)
-// OR
-AT+CPSEVE=1,f(205)(217)j(254)(13)(10)no(32)change(13)(10)
-// OR
-AT+CPSRVEz(197)(177)(138)(154)(154)(178)(254)(13)(13)(10)(13)(10)OK(13)(10)<--[26c],[22ms],[0w]
-
+<---
+AT+CPSRV(164)(245)(197)b(138)(138)(138)(138)(254)(13)(13)(10)(13)(10)OK(13)(10)<--[26c],[18ms],[0w]
+<---
+AT+CIPMUX=1(13)(13)(10)(13)(10)OK(13)(10)<--[20c],[24ms],[1w]
+<---
+AT+C(160)M(21)IY(21)I(138)b(138)(138)(254)1(13)(13)(10)no(32)change(13)(10)<--[31c],[21ms],[0w]
 */
+
   sendAt();
   sendReset();
   sendCwmode();
   //joinNetwork();
   sendCifsr();
   configureServer();
-  
   sendCipmux();
   sendCipServer();
     
   resetCbuf(cbuf, BUFFER_SIZE);
   lastReset = millis();
-//  Serial.println("configure done");
 }
 
 // config to apply after reset or power cycle. everthing else should be retained
@@ -261,10 +255,6 @@ void checkReset() {
     configureEsp8266();
   } 
 }
-// AT+RST ends with (168)HHWV.V(175)H(248)
-int readUntilEndsWith(uint8_t pattern[]) {
-  return -1;
-}
 
 void resetCbuf(char cbuf[], int size) {
  for (int i = 0; i < size; i++) {
@@ -287,7 +277,9 @@ void printCbuf(char cbuf[], int len) {
   for (int i = 0; i < len; i++) {
       if (cbuf[i] <= 32 || cbuf[i] >= 127) {
         // not printable. print the char value
-        Serial.print("("); Serial.print((uint8_t)cbuf[i]); Serial.print(")");
+        Serial.print("(");
+        Serial.print((uint8_t)cbuf[i]);
+        Serial.print(")");
       } else {
         Serial.write(cbuf[i]);
       }
@@ -355,7 +347,9 @@ int readFor(int timeout) {
       if (in <= 32 || in >= 127) {
         // not printable. print the char value
         #ifdef DEBUG
-          Serial.print("("); Serial.print(in); Serial.print(")");
+          Serial.print("("); 
+          Serial.print(in); 
+          Serial.print(")");
         #endif
       } else {
         // pass through
@@ -446,7 +440,8 @@ void handleData() {
   // reset so we can print
   
   #ifdef DEBUG
-    Serial.print("Data len "); Serial.println(len);
+    Serial.print("Data len "); 
+    Serial.println(len);
   #endif
   
   if (len > 128) {
@@ -462,7 +457,8 @@ void handleData() {
   
   if (rlen != len) {
     #ifdef DEBUG
-      Serial.print("Data read failure "); Serial.println(rlen);            
+      Serial.print("Data read failure "); 
+      Serial.println(rlen);            
     #endif
     return;
   }
@@ -482,8 +478,6 @@ void handleData() {
   
   int sendLen = strlen(response) + 2;
   
-  //delay(50);
-  
   // send AT command with channel and message length
   esp->print("AT+CIPSEND="); 
   esp->print(channel); 
@@ -492,9 +486,7 @@ void handleData() {
   esp->print("\r\n");
   
   //flush wrecks this device
-  //espSerial.flush();
-  
-  //delay(50);
+  //esp->flush();
   
   // replies with
   //(13)(10)(13)(10)OK(13)(10)AT+CIPSEND=0,4(13)(13)(10)>(32)<--[27]
@@ -508,13 +500,14 @@ void handleData() {
   
   if (rCmdLen == -1) {
     #ifdef DEBUG
-      Serial.println("AT+CIPSEND timeout");
+      Serial.println("CIPSEND timeout");
     #endif
     
     return;
   } else if (rCmdLen != cmdLen) {
     #ifdef DEBUG
-      Serial.print("Error unexp. reply len: "); Serial.println(rCmdLen);
+      Serial.print("Error unexp. reply len: "); 
+      Serial.println(rCmdLen);
     #endif
     
     return;
@@ -539,8 +532,6 @@ void handleData() {
     Serial.println("CIPSEND reply");
     printCbuf(cbuf, cmdLen);
   #endif
-  
-  //delay(100);
   
   // send data to client
   esp->print(response);
@@ -575,8 +566,6 @@ void handleData() {
     Serial.println("Data reply");
     printCbuf(cbuf, len);        
   #endif
-  
-  //delay(50);
 }
 
 void handleConnected() {
@@ -584,7 +573,7 @@ void handleConnected() {
     Serial.println("Connected!");
   #endif
   // discard
-  int len = espSerial.readBytesUntil(10, cbuf, 128);
+  int len = esp->readBytesUntil(10, cbuf, BUFFER_SIZE - 1);
   // TODO parse channel
   // connected[channel] = true;
 }
@@ -596,7 +585,7 @@ void handleClosed() {
     Serial.println("Conn closed");
   #endif
   // consume line
-  int len = espSerial.readBytesUntil(10, cbuf, 128);
+  int len = esp->readBytesUntil(10, cbuf, BUFFER_SIZE - 1);
 }
 
 void loop() {
@@ -604,9 +593,10 @@ void loop() {
   
   // the tricky part of AT commands is they vary in length and format, so we don't know how much to read
   // with 6 chars we should be able to identify most allcommands
-  if (espSerial.available() >= readLen) {
+  if (esp->available() >= readLen) {
     #ifdef DEBUG      
-      Serial.print("\n\nSerial available "); Serial.println(espSerial.available());
+      Serial.print("\n\nSerial available "); 
+      Serial.println(esp->available());
     #endif
     
     readChars(cbuf, 0, readLen, 1000);
@@ -638,6 +628,9 @@ void loop() {
     
     if (false) {
       // health check        
+      if (sendAt() != 1) {
+        
+      }
     }
     
     resetCbuf(cbuf, BUFFER_SIZE);
