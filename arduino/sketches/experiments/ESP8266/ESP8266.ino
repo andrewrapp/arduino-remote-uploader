@@ -1,5 +1,9 @@
 #include <SoftwareSerial.h>
 
+// TODO
+// figure out why it fails completely when debug is disabled. probably timing issue
+// parse channel on new connection, close connection
+
 #define ESP_RX   3
 #define ESP_TX   4
 SoftwareSerial espSerial(ESP_RX, ESP_TX);
@@ -14,6 +18,7 @@ SoftwareSerial espSerial(ESP_RX, ESP_TX);
 #define WIFI_NETWORK ""
 #define WIFI_PASSWORD ""
 
+// may not be necessary. instead do a AT command and only reset if no response
 #define RESET_MINS 180
 //#define SEND_AT_EVERY_MINS 1
 
@@ -576,7 +581,7 @@ void handleData() {
     #endif
     
     return;
-  } else if (strstr(cbuf, "CIPSEND") == NULL) {
+  } else if (strstr(cbuf, "OK") == NULL) {
     #ifdef DEBUG
       Serial.print("Error: ");
       Serial.println(cbuf);
@@ -599,7 +604,8 @@ void handleData() {
   //ok(13)(13)(10)SEND(32)OK(13)(10)<--[14]
 
   // fixed length reply
-  len = readChars(cbuf, 0, strlen(response) + 12, 1000);
+  // timed out a few times over 12h period with 1s timeout. increasing timeout to 5s
+  len = readChars(cbuf, 0, strlen(response) + 12, 5000);
   
   if (len == -1) {
     #ifdef DEBUG 
