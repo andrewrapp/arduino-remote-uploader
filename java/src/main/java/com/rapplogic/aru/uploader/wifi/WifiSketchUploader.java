@@ -20,6 +20,7 @@
 package com.rapplogic.aru.uploader.wifi;
 
 import java.io.IOException;
+import java.net.Socket;
 import java.text.ParseException;
 import java.util.Map;
 import java.util.Queue;
@@ -42,24 +43,10 @@ import com.rapplogic.xbee.api.zigbee.ZNetRxResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
 
-/**
- * Only tested on Mac. I've included RXTX libraries for windows, and linux, so should work for 32-bit jvms
- * On mac you must use the java 1.6 that comes with Mac as Oracle Java for Mac does not support 32-bit mode, which RXTX requires (RXTX seems to be abandoned and they don't release 64-bit binaries)
- * Similarly on other platforms that don't support 32-bit mode, you'll need to find a java version that does
- *  
- * ex ./sketch-loader.sh --sketch_hex /var/folders/g1/vflh_srj3gb8zvpx_r5b9phw0000gn/T/build1410674702632504781.tmp/Blink.cpp.hex --serial_port /dev/tty.usbserial-A6005uRz --baud_rate 9600 --remote_xbee_address 0013A200408B98FF
- * 
- * @author andrew
- *
- */
 public class WifiSketchUploader extends SketchUploader {
 	
-	final Queue<int[]> replies = Lists.newLinkedList();
-
 	public final int WIFI_PAGE_SIZE = 32;
 
-	private final XBee xbee = new XBee();
-	
 	public WifiSketchUploader() {
 		super();
 	}
@@ -69,44 +56,50 @@ public class WifiSketchUploader extends SketchUploader {
 		super.process(file, WIFI_PAGE_SIZE, ackTimeoutMillis, arduinoTimeoutSec, retriesPerPacket, delayBetweenRetriesMillis, verbose, context);
 	}
 
+	private Socket socket = null;
+	
 	@Override
 	protected void open(final Map<String, Object> context) throws Exception {
 		
 		// open socket
+		socket = new Socket("192.168.1.115", 1111);
 		
+		Thread t = new Thread(new Runnable() {
+			
+			@Override
+			public void run() {
+				int ch = 0;
+				
+				// reply always terminated with 13,10
+				try {
+					while ((ch = socket.getInputStream().read()) > -1) {
+						if (ch > 32 && ch < 127) {
+
+						} else {
+						
+						}
+						
+						if (ch == 10) {
+
+						}
+					}
+					
+					System.out.println("Input stream closing");
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		});
+		
+		t.setDaemon(true);
+		t.start();
+		
+		// esp8266 needs short delay after connecting
+		Thread.sleep(50);
+		
+		
+//		addReply(reply);
 		// add listener
-		
-//		xbee.addPacketListener(new PacketListener() {
-//			@Override
-//			public void processResponse(XBeeResponse response) {					
-//				if (response.getApiId() == ApiId.ZNET_RX_RESPONSE) {
-//					
-//					boolean verbose = (Boolean) context.get("verbose");
-//					
-//					if (verbose) {
-//						System.out.println("Received rx packet from arduino " + response);							
-//					}
-//
-//					ZNetRxResponse zb = (ZNetRxResponse) response;
-//					
-//					if (zb.getData()[0] == MAGIC_BYTE1 && zb.getData()[1] == MAGIC_BYTE2) {
-//						addReply(zb.getData());
-//					} else {
-//						System.out.println("Ignoring non-programming packet " + zb);
-//					}
-//				} else if (response.getApiId() == ApiId.ZNET_TX_STATUS_RESPONSE) {
-//					ZNetTxStatusResponse zNetTxStatusResponse = (ZNetTxStatusResponse) response;
-//					
-//					if (zNetTxStatusResponse.isSuccess()) {
-//						// yay					
-//					} else {
-//						// interrupt thread in case it's waiting for ack, which will never come
-//						System.out.println("Failed to deliver packet. Interrupting main thread. Response: " + response);
-//						interrupt();
-//					}
-//				}
-//			}
-//		});
 	}
 
 	final int TX_TIMEOUT = 500;
@@ -114,12 +107,20 @@ public class WifiSketchUploader extends SketchUploader {
 	
 	@Override
 	protected void writeData(int[] data, Map<String,Object> context) throws Exception {
-		// write to socket
+		// ugh, convert to byte[] required or esp will receive multiple IPD commands
+		byte[] b = new byte[data.length];
+		
+		for (int i = 0; i < data.length; i++) {
+			b[i] = (byte) (data[i] & 0xff);
+		}
+		
+		socket.getOutputStream().write(b);
 	}
 
 	@Override
 	protected void close() throws Exception {
 		// close socket
+		socket.close();
 	}
 
 	@Override
