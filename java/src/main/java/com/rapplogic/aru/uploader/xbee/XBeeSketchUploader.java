@@ -53,9 +53,7 @@ import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
  *
  */
 public class XBeeSketchUploader extends SketchUploader {
-	
-	final Queue<int[]> replies = Lists.newLinkedList();
-		
+
 	// TODO xbee just woke, send programming!
 	//final int WAKE = 4;
 	

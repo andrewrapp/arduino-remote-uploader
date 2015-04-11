@@ -27,8 +27,6 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.util.Map;
 import java.util.TooManyListenersException;
-import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.OptionBuilder;
