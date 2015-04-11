@@ -14,21 +14,22 @@ SoftwareSerial espSerial(ESP_RX, ESP_TX);
 #define WIFI_NETWORK ""
 #define WIFI_PASSWORD ""
 
-#define RESET_MINS 15
+#define RESET_MINS 180
 //#define SEND_AT_EVERY_MINS 1
 
 long resetEvery = RESET_MINS * 60000;
 long lastReset = 0;
 
 char cbuf[BUFFER_SIZE];
-//uint8_t data[64];
-// how many channels are supported?
-//bool connected[10];
 
 // TODO keep track of which channels are open/closed
 
 Stream* debug;
 Stream* esp;
+
+// FIXME handle array of connections
+//bool[] connections = new bool[5];
+int lastConnection = -1;
 
 void setup() {
   // first run AT to see if alive
@@ -69,6 +70,19 @@ void setup() {
 //  return writeLen;
 //}
 
+void resetEsp8266() {
+  if (lastConnection != -1) {
+    closeConnection(lastConnection);
+  }
+  
+  stopServer();
+  sendReset();
+  configureServer();
+    
+  resetCbuf(cbuf, BUFFER_SIZE);
+  lastReset = millis();  
+}
+
 int printDebug(char* text) {
   #ifdef DEBUG
     return debug->print(text);
@@ -87,8 +101,6 @@ void debugLoop(void) {
     if(esp->available()) debug->write(esp->read());
   }
 }
-
-
 
 void configureEsp8266() {
 /*
@@ -116,8 +128,8 @@ AT+C(160)M(21)IY(21)I(138)b(138)(138)(254)1(13)(13)(10)no(32)change(13)(10)<--[3
   //joinNetwork();
   sendCifsr();
   configureServer();
-  sendCipmux();
-  sendCipServer();
+  enableMultiConnections();
+  startServer();
     
   resetCbuf(cbuf, BUFFER_SIZE);
   lastReset = millis();
@@ -125,9 +137,11 @@ AT+C(160)M(21)IY(21)I(138)b(138)(138)(254)1(13)(13)(10)no(32)change(13)(10)<--[3
 
 // config to apply after reset or power cycle. everthing else should be retained
 void configureServer() {
-  sendCipmux();
-  sendCipServer();
+  enableMultiConnections();
+  startServer();
 }
+
+// TODO static ip: AT+CIPSTA
 
 int sendAt() {
   esp->print("AT\r\n");
@@ -211,7 +225,9 @@ int sendCifsr() {
   return 1;
 }
 
-int sendCipmux() {
+// required for server mode
+// set to 0 for single connection
+int enableMultiConnections() {
   esp->print("AT+CIPMUX=1\r\n"); 
   
   // if still connected: AT+CIPMUX=1(13)(13)(10)link(32)is(32)builded(13)(10)
@@ -228,14 +244,52 @@ int sendCipmux() {
   return 1;
 }
 
-int sendCipServer() {
-  esp->print("AT+CIPSERVER=1,"); 
-  esp->print(LISTEN_PORT);
+int closeConnection(int id) {
+  esp->print("AT+CIPCLOSE=");
+  esp->print(id);
+  esp->print("\r\n"); 
+  
+  readFor(200);    
+
+  if (strstr(cbuf, "OK") == NULL) {
+      #ifdef DEBUG
+        Serial.println("Close conn fail");        
+      #endif    
+      
+      return 0;
+  }
+  
+  return 1;  
+}
+
+// must enable multi connections prior to calling
+int startServer() {
+  startStopServer(true);  
+}
+
+// stop server and close connections. must call reset after
+int stopServer() {
+  startStopServer(false);
+}
+
+int startStopServer(bool start) {
+  esp->print("AT+CIPSERVER="); 
+  if (start) {
+    esp->print(1);
+  } else {
+    esp->print(0);
+  }
+  
+  if (start) {
+    esp->print(",");
+    esp->print(LISTEN_PORT);    
+  }
+
   esp->print("\r\n");  
   
   readFor(500);  
   
-  if (!(strstr(cbuf, "OK") != NULL || strstr(cbuf, "no change"))) {
+  if (!(strstr(cbuf, "OK") != NULL || strstr(cbuf, "no change") || strstr(cbuf, "restart"))) {
       #ifdef DEBUG
         Serial.println("CIPSERVER fail");        
       #endif    
@@ -252,7 +306,8 @@ void checkReset() {
       Serial.println("Resetting");
     #endif
     
-    configureEsp8266();
+    resetEsp8266();
+//    configureEsp8266();
   } 
 }
 
@@ -422,6 +477,8 @@ void handleData() {
   #ifdef DEBUG
     Serial.print("Channel "); Serial.println(channel);
   #endif
+  
+  lastConnection = channel;
   
   //ipd[9] = 0;
   // length starts at pos 3
@@ -614,6 +671,7 @@ void loop() {
       //0,CONNECT(13)(10)      
       handleConnected();
     } else if (strstr(cbuf, "CLOS") != NULL) {
+      lastConnection = -1;
       handleClosed();
     } else {
       #ifdef DEBUG
@@ -623,7 +681,7 @@ void loop() {
       readFor(2000);
       
       // assume the worst and reset
-      configureEsp8266();
+      resetEsp8266();
     }
     
     if (false) {
