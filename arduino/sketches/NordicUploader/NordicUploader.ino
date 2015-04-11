@@ -62,9 +62,9 @@ extEEPROM eeprom = extEEPROM(kbits_256, 1, 64);
 void setup() {
   // for Leonardo use &Serial1
   // for atmega328/168 use &Serial
-  remoteUploader.setup(&Serial, &eeprom, RESET_PIN);
+  remoteUploader.setup(&Serial1, &eeprom, RESET_PIN);
   //configure debug if an additional Serial port is available. Use Serial with Leonardo
-  //remoteUploader.setDebugSerial(&Serial);
+  remoteUploader.setDebugSerial(&Serial);
   
   radio.begin();
   radio.setChannel(0x8);
