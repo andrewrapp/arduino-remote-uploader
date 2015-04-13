@@ -4,16 +4,14 @@
 // figure out why it fails completely when debug is disabled. probably timing issue
 // parse channel on new connection, close connection
 
+#define DEBUG
+
 #define ESP_RX   3
 #define ESP_TX   4
-SoftwareSerial espSerial(ESP_RX, ESP_TX);
-
-#define readLen 6
+#define COMMAND_LEN 6
 // fails without debug enabled, what??
-#define DEBUG
 #define BUFFER_SIZE 128
 #define LISTEN_PORT "1111"
-
 // replace with wifi creds
 #define WIFI_NETWORK ""
 #define WIFI_PASSWORD ""
@@ -21,6 +19,8 @@ SoftwareSerial espSerial(ESP_RX, ESP_TX);
 // may not be necessary. instead do a AT command and only reset if no response
 #define RESET_MINS 180
 //#define SEND_AT_EVERY_MINS 1
+
+SoftwareSerial espSerial(ESP_RX, ESP_TX);
 
 long resetEvery = RESET_MINS * 60000;
 long lastReset = 0;
@@ -35,6 +35,10 @@ Stream* esp;
 // FIXME handle array of connections
 //bool[] connections = new bool[5];
 int lastConnection = -1;
+
+Stream* getEspSerial() {
+  return esp;
+}
 
 void setup() {
   // first run AT to see if alive
@@ -52,6 +56,10 @@ void setup() {
   configureServer();
   
   lastReset = millis();
+
+  #ifdef DEBUG
+    Serial.println("ok setup");
+  #endif
 }
 
 //int print(char* text) {
@@ -332,8 +340,11 @@ int clearSerial() {
   return count;
 }
 
-#ifdef DEBUG
 void printCbuf(char cbuf[], int len) {
+  
+  #ifdef DEBUG  
+  long start = millis();
+
   for (int i = 0; i < len; i++) {
       if (cbuf[i] <= 32 || cbuf[i] >= 127) {
         // not printable. print the char value
@@ -343,9 +354,17 @@ void printCbuf(char cbuf[], int len) {
       } else {
         Serial.write(cbuf[i]);
       }
-  } 
+  }
+ 
+  long end = millis();
+  Serial.print(" in ");
+  Serial.print(end - start);
+  Serial.println("ms");
+  #else
+    //Serial.println("delaying");
+    delay(50);
+  #endif
 }
-#endif
 
 int readChars(char cbuf[], int startAt, int len, int timeout) {  
   int pos = startAt;
@@ -410,6 +429,8 @@ int readFor(int timeout) {
           Serial.print("("); 
           Serial.print(in); 
           Serial.print(")");
+        #else
+          delay(2);
         #endif
       } else {
         // pass through
@@ -464,12 +485,11 @@ void handleData() {
 //  return;
   
   // serial buffer is at comma after D
-  char* ipd = cbuf + readLen;
+  char* ipd = cbuf + COMMAND_LEN;
   
   // max channel + length + 2 commas + colon = 9
   int len = esp->readBytesUntil(':', ipd, 9);
-  
-  //Serial.print("read char to : "); Serial.println(len);
+
   // space ,0,1:(32)(13)(10)OK(13)(10)(13)(10)
   
   // parse channel
@@ -480,7 +500,8 @@ void handleData() {
   ipd[2] = ',';
   
   #ifdef DEBUG
-    Serial.print("Channel "); Serial.println(channel);
+    Serial.print("On channel "); 
+    Serial.println(channel);
   #endif
   
   lastConnection = channel;
@@ -529,7 +550,7 @@ void handleData() {
   cbuf[len] = 0;
   
   #ifdef DEBUG
-    Serial.print("Data:");  
+    Serial.print("Data:");     
     printCbuf(cbuf, len);
     Serial.println("");  
   #endif
@@ -656,16 +677,16 @@ void loop() {
   
   // the tricky part of AT commands is they vary in length and format, so we don't know how much to read
   // with 6 chars we should be able to identify most allcommands
-  if (esp->available() >= readLen) {
+  if (esp->available() >= COMMAND_LEN) {
     #ifdef DEBUG      
       Serial.print("\n\nSerial available "); 
       Serial.println(esp->available());
     #endif
     
-    readChars(cbuf, 0, readLen, 1000);
+    readChars(cbuf, 0, COMMAND_LEN, 1000);
     
     #ifdef DEBUG
-      printCbuf(cbuf, readLen);
+      printCbuf(cbuf, COMMAND_LEN);
     #endif
     
     // not using Serial.find because if it doesn't match we lose the data. so not helpful
@@ -702,5 +723,5 @@ void loop() {
     clearSerial();      
   }
   
-  checkReset();  
+  //checkReset();  
 }
