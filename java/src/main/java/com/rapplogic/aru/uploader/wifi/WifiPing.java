@@ -3,6 +3,7 @@ package com.rapplogic.aru.uploader.wifi;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Date;
@@ -16,10 +17,32 @@ public class WifiPing {
 	final static AtomicInteger attempts = new AtomicInteger();
 	final static AtomicInteger fails = new AtomicInteger();
 	
+	private Socket socket = null;	
+	
 	public WifiPing() throws UnknownHostException, IOException, InterruptedException {
-		
+		try {
+			ping();			
+		} finally {
+			if (socket != null && !socket.isClosed()) {
+				socket.close();
+			}
+		}
+	}
+	
+	public void ping() throws IOException, InterruptedException {
 		System.out.println(new Date() + " Connecting");
-		final Socket socket = new Socket("192.168.1.115", 1111);
+
+		try {
+			socket = new Socket();
+			socket.connect(new InetSocketAddress("192.168.1.115", 1111), 10000);
+			socket.setSoTimeout(10000);
+			System.out.println("Connected");
+		} catch (IOException e) {
+			System.out.println(new Date() + " unable to connect " + e.toString());
+			return;
+		}
+		
+		final Socket fSocket = socket;
 		
 		final OutputStream outputStream = socket.getOutputStream();
 		final InputStream inputStream = socket.getInputStream();
@@ -49,10 +72,18 @@ public class WifiPing {
 					
 					System.out.println(new Date() + " end of input stream reached. closing socket");
 					// close socket to trigger io exception in main thread
-					socket.close();
-				} catch (IOException e) {
-					System.out.println(new Date() + " socket error in read " + e.toString());
+					fSocket.close();
+				} catch (Exception e) {
+					System.out.println(new Date() + " error in read. exiting " + e.toString());
 					e.printStackTrace();
+				} finally {
+					if (fSocket != null && !fSocket.isClosed()) {
+						try {
+							fSocket.close();
+						} catch (IOException e) {
+							System.out.println(new Date() + " failed to close socket " + e.toString());
+						}
+					}
 				}
 			}
 		});
@@ -60,12 +91,36 @@ public class WifiPing {
 		t.setDaemon(true);
 		t.start();
 		
+		StringBuilder messageBuilder = new StringBuilder();
+		
+		for (int i = 0; i < 32; i++) {
+			messageBuilder.append((char)(i + 65));
+		}
+		
 		Thread.sleep(50);
 
 		// send packet every 1 minute. log failures
 		while (true) {
 			attempts.getAndIncrement();
-			sendFakePacket(outputStream);;
+			
+			String message = messageBuilder.toString();
+			//String message = "hi there how are you doing today?"; 
+			
+			System.out.println("Message len is " + message.length());
+			
+			try {
+				byte[] messageBytes = (message + "\r\n").getBytes();
+				
+//				byte[] messageBytes = new byte[32];
+//				for (int i = 0; i < 32; i++) {
+//					messageBytes[i] = (byte) 200;
+//				}
+				
+				sendFakePacket(messageBytes, outputStream);
+			} catch (IOException e) {
+				System.out.println(new Date() + " unable to send packet " + e.toString());
+				break;
+			}
 			
 			synchronized (lock) {
 				// choose delay based success times
@@ -74,37 +129,41 @@ public class WifiPing {
 				if (!"ok".equals(stringBuilder.toString())) {
 					fails.getAndIncrement();
 					System.out.println(new Date() + " No ack. Fails " + fails.get() + " of " + attempts.get());
+				} else {
+					System.out.println(new Date() + " Success");
 				}
 				
 				stringBuilder = new StringBuilder();
 			}
 			
-			Thread.sleep(3000);
+			Thread.sleep(100);
 		}
 	}
 	
-	public void sendFakePacket(OutputStream outputStream) throws IOException, InterruptedException {
-		String message = "hi there how are you doing today?\r\n";
-		
+	public void sendFakePacket(byte[] message, OutputStream outputStream) throws IOException, InterruptedException {
 		// when arduino resets esp, it doesn't kill the connection so we don't get an i/o exception for a few mins
 		// TODO see if connection can be close on arduino prior to reset
 		// java.net.SocketException: Broken pipe
 		
 		// still and issue with esp8266 where if it closes the connection and restarts, we can connect and
 		// write data but it ignores it for a while
-		outputStream.write(message.getBytes());
+		
+		System.out.println("Sending message " + message);
+		outputStream.write(message);
 		outputStream.flush();
 	}
 	
 	public static void main(String[] args) throws UnknownHostException, IOException, InterruptedException {
 		while (true) {
 			try {
-				new WifiPing();			
-			} catch (IOException e) {
-				System.out.println(new Date() + " IO error: " + e.toString());
+				new WifiPing().ping();	
+			} catch (Exception e) {
+				e.printStackTrace();
+				System.out.println(new Date() + " Unexpected error error: " + e.toString());
+			} finally {
 				// give it some time
 				Thread.sleep(30000);
-			}			
+			}
 		}
 	}
 }
