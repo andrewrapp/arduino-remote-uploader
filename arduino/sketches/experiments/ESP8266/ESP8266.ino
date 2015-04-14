@@ -52,21 +52,21 @@ void setup() {
   espSerial.begin(9600); // Soft serial connection to ESP8266
   esp = &espSerial;
   
-  #ifdef DEBUG
+  //#ifdef DEBUG
     Serial.begin(9600); while(!Serial); // UART serial debug
     debug = &Serial;
-  #else
-    debug = NULL;
-  #endif
+  //#else
+  //  debug = NULL;
+  //#endif
 
   //configureEsp8266();
   configureServer();
   
   lastReset = millis();
 
-  #ifdef DEBUG
+  //#ifdef DEBUG
     getDebugSerial()->println("ok setup");
-  #endif
+  //#endif
 }
 
 //int print(char* text) {
@@ -403,29 +403,26 @@ int readChars(char cbuf[], int startAt, int len, int timeout) {
   return pos;  
 }
 
-/*
-int readCharsUntil(char cbuf[], char c, int len, int timeout) {  
-  int pos = startAt;
+int readBytesUntil(char cbuf[], uint8_t match, int maxReadLen, int timeout) {  
+  int pos = 0;
   long start = millis();
 
   while (millis() - start < timeout) {          
     if (getEspSerial()->available() > 0) {
       uint8_t in = getEspSerial()->read();
       
-      if (ch == (char) in) {
-        if (pos > 0) {
-          cbuf[++pos] = 0;
-        }
-        
+      // don't include the match byte
+      if (match == in) {        
         return pos;  
       }
       
       cbuf[pos++] = in;
       
-      if (pos == len) {
-        // null terminate
-        cbuf[pos] = 0;
-        return len;
+      if (pos == maxReadLen) {
+        // max read, not found
+        // not found starts at -2 and indicates number of bytes read - 1
+        //return -1*(pos + 1);
+        return 0;
       }    
     }
   }
@@ -437,7 +434,6 @@ int readCharsUntil(char cbuf[], char c, int len, int timeout) {
 
   return pos;  
 }
-*/
 
 // debugging aid
 int readFor(int timeout) {
@@ -526,25 +522,23 @@ int handleData() {
   // cbuf ,0,10:    
   
   // debug output
-//  readFor(1000);
-//  return;
+  //readFor(2000);
+  //return 1;
   
   // serial buffer is at comma after D
   char* ipd = cbuf + COMMAND_LEN;
   
-  // pause until we have enough.. this 
-  while (getEspSerial()->available() < 5) {
-    
-  }
-  
-  // max channel + length + 2 commas + colon = 9
-  // TODO replace with my impl. readBytesUntil is doo doo
-  int len = getEspSerial()->readBytesUntil(':', ipd, 9);
+  // max channel + data length + 2 commas + colon = 9
+  int len = readBytesUntil(ipd, ':', BUFFER_SIZE - COMMAND_LEN, 3000);
   
   if (len == 0) {
     // not found
     return -1;
+  } else if (len == -1) {
+    // timeout
+    return -2;
   }
+
   // space ,0,1:(32)(13)(10)OK(13)(10)(13)(10)
   
   // parse channel
@@ -591,10 +585,12 @@ int handleData() {
   }
 
   // read input into data buffer
-  //int rlen = getEspSerial()->readBytes(cbuf, len);
-  int rlen = readChars(cbuf, 0, len, 2000);
+  int rlen = readChars(cbuf, 0, len, 3000);
   
-  if (rlen != len) {
+  if (rlen == -1) {
+    // timeout
+    return -4;
+  } else if (rlen != len) {
     #ifdef DEBUG
       getDebugSerial()->print("Data read failure "); 
       getDebugSerial()->println(rlen);            
@@ -618,13 +614,13 @@ int handleData() {
   int sendLen = strlen(response) + 2;
   
   // send AT command with channel and message length
+  // TODO get write len
   getEspSerial()->print("AT+CIPSEND="); 
   getEspSerial()->print(channel); 
   getEspSerial()->print(","); 
   getEspSerial()->print(sendLen); 
   getEspSerial()->print("\r\n");
-  
-  //flush wrecks this device
+  // don't use flush!
   //getEspSerial()->flush();
   
   // replies with
@@ -688,10 +684,12 @@ int handleData() {
     #ifdef DEBUG 
       getDebugSerial()->println("Data send timeout");            
     #endif
+    return -11;
   } else if (len != 12 + strlen(response)) {
     #ifdef DEBUG 
       getDebugSerial()->println("Reply len err");            
-    #endif      
+    #endif     
+    return -12; 
   }
 
   if (strstr(cbuf, "OK") == NULL) {
@@ -732,7 +730,9 @@ void handleClosed() {
 
 void loop() {
   //debugLoop();
-  
+
+  int result = 0;
+
   // the tricky part of AT commands is they vary in length and format, so we don't know how much to read
   // with 6 chars we should be able to identify most allcommands
   if (getEspSerial()->available() >= COMMAND_LEN) {
@@ -748,25 +748,36 @@ void loop() {
     #endif
     
     // not using Serial.find because if it doesn't match we lose the data. so not helpful
-    
+
     if (strstr(cbuf, "+IPD") != NULL) {
       //(13)(10)+IPD,0,4:hi(13)(10)(13)(10)OK(13)(10)      
-      handleData();
+      result = handleData();
     } else if (strstr(cbuf, ",CONN") != NULL) {
+      getDebugSerial()->println("Connected!");
       //0,CONNECT(13)(10)      
       handleConnected();
     } else if (strstr(cbuf, "CLOS") != NULL) {
+      getDebugSerial()->println("Disconnected!");
       lastConnection = -1;
       handleClosed();
     } else {
-      #ifdef DEBUG
+      //#ifdef DEBUG
         getDebugSerial()->println("Unexpected..");
-      #endif
+      //#endif
       
       readFor(2000);
       
       // assume the worst and reset
       resetEsp8266();
+    }
+
+    if (result != 1) {
+      getDebugSerial()->print("Loop error: ");
+      getDebugSerial()->println(result);
+    } else {
+      getDebugSerial()->println("ok");
+      // might help??
+      //delay(50);
     }
     
     if (false) {
