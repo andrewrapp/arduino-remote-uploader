@@ -4,10 +4,11 @@
 // figure out why it fails completely when debug is disabled. probably timing issue
 // parse channel on new connection, close connection
 
-#define DEBUG
+//#define DEBUG
 
-#define ESP_RX   3
-#define ESP_TX   4
+#define ESP_RX 3
+#define ESP_TX 4
+// how many chars to read to identify command
 #define COMMAND_LEN 6
 // fails without debug enabled, what??
 #define BUFFER_SIZE 128
@@ -40,6 +41,10 @@ Stream* getEspSerial() {
   return esp;
 }
 
+Stream* getDebugSerial() {
+  return debug;
+}
+
 void setup() {
   // first run AT to see if alive
   delay(3000);
@@ -50,6 +55,8 @@ void setup() {
   #ifdef DEBUG
     Serial.begin(9600); while(!Serial); // UART serial debug
     debug = &Serial;
+  #else
+    debug = NULL;
   #endif
 
   //configureEsp8266();
@@ -58,7 +65,7 @@ void setup() {
   lastReset = millis();
 
   #ifdef DEBUG
-    Serial.println("ok setup");
+    getDebugSerial()->println("ok setup");
   #endif
 }
 
@@ -66,17 +73,17 @@ void setup() {
 //  int len = strlen(text);
 //  
 //  #ifdef DEBUG
-//    debug->print("-->");
+//    getDebugSerial()->print("-->");
 //    // ugh
-//    esp->print(len);
-//    debug->print(text);
+//    getEspSerial()->print(len);
+//    getDebugSerial()->print(text);
 //  #endif
 //
-//  int writeLen = esp->print(text);
+//  int writeLen = getEspSerial()->print(text);
 //  
 //  if (writeLen != len) {
 //    #ifdef DEBUG
-//      debug->print("Write fail. wrote x, but exp. y");
+//      getDebugSerial()->print("Write fail. wrote x, but exp. y");
 //    #endif    
 //  }
 //  
@@ -89,7 +96,7 @@ void resetEsp8266() {
   }
   
   stopServer();
-  sendReset();
+  sendRestart();
   configureServer();
     
   resetCbuf(cbuf, BUFFER_SIZE);
@@ -98,7 +105,7 @@ void resetEsp8266() {
 
 int printDebug(char* text) {
   #ifdef DEBUG
-    return debug->print(text);
+    return getDebugSerial()->print(text);
   #endif
   
   return -1;
@@ -108,10 +115,10 @@ int printDebug(char* text) {
 void debugLoop(void) {
   if(!debug) for(;;); // If no debug connection, nothing to do.
 
-  debug->println("\n========================");
+  getDebugSerial()->println("\n========================");
   for(;;) {
-    if(debug->available())  esp->write(debug->read());
-    if(esp->available()) debug->write(esp->read());
+    if(getDebugSerial()->available())  getEspSerial()->write(getDebugSerial()->read());
+    if(getEspSerial()->available()) getDebugSerial()->write(getEspSerial()->read());
   }
 }
 
@@ -136,7 +143,7 @@ AT+C(160)M(21)IY(21)I(138)b(138)(138)(254)1(13)(13)(10)no(32)change(13)(10)<--[3
 */
 
   sendAt();
-  sendReset();
+  sendRestart();
   sendCwmode();
   //joinNetwork();
   sendCifsr();
@@ -157,7 +164,7 @@ void configureServer() {
 // TODO static ip: AT+CIPSTA
 
 int sendAt() {
-  esp->print("AT\r\n");
+  getEspSerial()->print("AT\r\n");
   
   readFor(100);  
   
@@ -168,8 +175,8 @@ int sendAt() {
   return 1;
 }  
 
-int sendReset() {
-  esp->print("AT+RST\r\n");
+int sendRestart() {
+  getEspSerial()->print("AT+RST\r\n");
   
   readFor(2500);  
   
@@ -185,7 +192,7 @@ int sendReset() {
 }  
 
 int sendCwmode() {
-  esp->print("AT+CWMODE=3\r\n");
+  getEspSerial()->print("AT+CWMODE=3\r\n");
   
   readFor(100);
   
@@ -201,17 +208,17 @@ int sendCwmode() {
 }
 
 int joinNetwork() {  
-  esp->print("AT+CWJAP=\""); 
-  esp->print(WIFI_NETWORK); 
-  esp->print("\",\"");
-  esp->print(WIFI_PASSWORD);
-  esp->print("\"\r\n");
+  getEspSerial()->print("AT+CWJAP=\""); 
+  getEspSerial()->print(WIFI_NETWORK); 
+  getEspSerial()->print("\",\"");
+  getEspSerial()->print(WIFI_PASSWORD);
+  getEspSerial()->print("\"\r\n");
   
   readFor(10000);
   
   if (strstr(cbuf, "OK") == NULL) {
       #ifdef DEBUG
-        Serial.println("Join fail");        
+        getDebugSerial()->println("Join fail");        
       #endif    
       
       return 0;
@@ -223,13 +230,13 @@ int joinNetwork() {
 int sendCifsr() {
   // on start we could publish our ip address to a known entity
   // or, get from router, or use static ip, 
-  esp->print("AT+CIFSR\r\n");
+  getEspSerial()->print("AT+CIFSR\r\n");
   readFor(200);
   
   // TODO parse ip address
   if (strstr(cbuf, "AT+CIFSR") == NULL) {
       #ifdef DEBUG
-        Serial.println("CIFSR fail");        
+        getDebugSerial()->println("CIFSR fail");        
       #endif    
       
       return 0;
@@ -241,14 +248,14 @@ int sendCifsr() {
 // required for server mode
 // set to 0 for single connection
 int enableMultiConnections() {
-  esp->print("AT+CIPMUX=1\r\n"); 
+  getEspSerial()->print("AT+CIPMUX=1\r\n"); 
   
   // if still connected: AT+CIPMUX=1(13)(13)(10)link(32)is(32)builded(13)(10)
   readFor(200);    
 
   if (!(strstr(cbuf, "OK") != NULL || strstr(cbuf, "builded"))) {
       #ifdef DEBUG
-        Serial.println("CIPMUX fail");        
+        getDebugSerial()->println("CIPMUX fail");        
       #endif    
       
       return 0;
@@ -258,15 +265,15 @@ int enableMultiConnections() {
 }
 
 int closeConnection(int id) {
-  esp->print("AT+CIPCLOSE=");
-  esp->print(id);
-  esp->print("\r\n"); 
+  getEspSerial()->print("AT+CIPCLOSE=");
+  getEspSerial()->print(id);
+  getEspSerial()->print("\r\n"); 
   
   readFor(200);    
 
   if (strstr(cbuf, "OK") == NULL) {
       #ifdef DEBUG
-        Serial.println("Close conn fail");        
+        getDebugSerial()->println("Close conn fail");        
       #endif    
       
       return 0;
@@ -286,25 +293,25 @@ int stopServer() {
 }
 
 int startStopServer(bool start) {
-  esp->print("AT+CIPSERVER="); 
+  getEspSerial()->print("AT+CIPSERVER="); 
   if (start) {
-    esp->print(1);
+    getEspSerial()->print(1);
   } else {
-    esp->print(0);
+    getEspSerial()->print(0);
   }
   
   if (start) {
-    esp->print(",");
-    esp->print(LISTEN_PORT);    
+    getEspSerial()->print(",");
+    getEspSerial()->print(LISTEN_PORT);    
   }
 
-  esp->print("\r\n");  
+  getEspSerial()->print("\r\n");  
   
   readFor(500);  
   
   if (!(strstr(cbuf, "OK") != NULL || strstr(cbuf, "no change") || strstr(cbuf, "restart"))) {
       #ifdef DEBUG
-        Serial.println("CIPSERVER fail");        
+        getDebugSerial()->println("CIPSERVER fail");        
       #endif    
       
       return 0;
@@ -316,7 +323,7 @@ int startStopServer(bool start) {
 void checkReset() {
   if (millis() - lastReset > resetEvery) {
     #ifdef DEBUG
-      Serial.println("Resetting");
+      getDebugSerial()->println("Resetting");
     #endif
     
     resetEsp8266();
@@ -332,8 +339,8 @@ void resetCbuf(char cbuf[], int size) {
 
 int clearSerial() {
   int count = 0;
-  while (esp->available() > 0) {
-    esp->read();
+  while (getEspSerial()->available() > 0) {
+    getEspSerial()->read();
     count++;
   }
   
@@ -348,20 +355,20 @@ void printCbuf(char cbuf[], int len) {
   for (int i = 0; i < len; i++) {
       if (cbuf[i] <= 32 || cbuf[i] >= 127) {
         // not printable. print the char value
-        Serial.print("(");
-        Serial.print((uint8_t)cbuf[i]);
-        Serial.print(")");
+        getDebugSerial()->print("(");
+        getDebugSerial()->print((uint8_t)cbuf[i]);
+        getDebugSerial()->print(")");
       } else {
-        Serial.write(cbuf[i]);
+        getDebugSerial()->write(cbuf[i]);
       }
   }
  
   long end = millis();
-  Serial.print(" in ");
-  Serial.print(end - start);
-  Serial.println("ms");
+  getDebugSerial()->print(" in ");
+  getDebugSerial()->print(end - start);
+  getDebugSerial()->println("ms");
   #else
-    //Serial.println("delaying");
+    //getDebugSerial()->println("delaying");
     delay(50);
   #endif
 }
@@ -371,8 +378,8 @@ int readChars(char cbuf[], int startAt, int len, int timeout) {
   long start = millis();
 
   while (millis() - start < timeout) {          
-    if (esp->available() > 0) {
-      uint8_t in = esp->read();
+    if (getEspSerial()->available() > 0) {
+      uint8_t in = getEspSerial()->read();
       
       if (in <= 32 || in >= 127 || in == 0) {
         // TODO debug print warning 
@@ -396,6 +403,42 @@ int readChars(char cbuf[], int startAt, int len, int timeout) {
   return pos;  
 }
 
+/*
+int readCharsUntil(char cbuf[], char c, int len, int timeout) {  
+  int pos = startAt;
+  long start = millis();
+
+  while (millis() - start < timeout) {          
+    if (getEspSerial()->available() > 0) {
+      uint8_t in = getEspSerial()->read();
+      
+      if (ch == (char) in) {
+        if (pos > 0) {
+          cbuf[++pos] = 0;
+        }
+        
+        return pos;  
+      }
+      
+      cbuf[pos++] = in;
+      
+      if (pos == len) {
+        // null terminate
+        cbuf[pos] = 0;
+        return len;
+      }    
+    }
+  }
+  
+  if (millis() - start >= timeout) {
+    // timeout
+    return -1; 
+  }
+
+  return pos;  
+}
+*/
+
 // debugging aid
 int readFor(int timeout) {
   long start = millis();
@@ -405,19 +448,19 @@ int readFor(int timeout) {
   int pos = 0;
   
   #ifdef DEBUG
-    Serial.println("<---");
+    getDebugSerial()->println("<---");
   #endif
   
   resetCbuf(cbuf, BUFFER_SIZE);
   
   while (millis() - start < timeout) {          
-    if (esp->available() > 0) {
+    if (getEspSerial()->available() > 0) {
       if (waiting) {
         waits++;
         waiting = false; 
       }
       
-      uint8_t in = esp->read();
+      uint8_t in = getEspSerial()->read();
       cbuf[pos] = in;
       
       lastReadAt = millis() - start;
@@ -426,16 +469,16 @@ int readFor(int timeout) {
       if (in <= 32 || in >= 127) {
         // not printable. print the char value
         #ifdef DEBUG
-          Serial.print("("); 
-          Serial.print(in); 
-          Serial.print(")");
+          getDebugSerial()->print("("); 
+          getDebugSerial()->print(in); 
+          getDebugSerial()->print(")");
         #else
           delay(2);
         #endif
       } else {
         // pass through
         #ifdef DEBUG
-          Serial.write(in);
+          getDebugSerial()->write(in);
         #endif
       }
     } else {
@@ -447,13 +490,13 @@ int readFor(int timeout) {
   cbuf[pos] = 0;
   
   #ifdef DEBUG
-    Serial.print("<--[");
-    Serial.print(pos);
-    Serial.print("c],[");
-    Serial.print(lastReadAt);
-    Serial.print("ms],[");
-    Serial.print(waits);  
-    Serial.println("w]");    
+    getDebugSerial()->print("<--[");
+    getDebugSerial()->print(pos);
+    getDebugSerial()->print("c],[");
+    getDebugSerial()->print(lastReadAt);
+    getDebugSerial()->print("ms],[");
+    getDebugSerial()->print(waits);  
+    getDebugSerial()->println("w]");    
   #endif
   
   return pos;
@@ -470,11 +513,13 @@ int getCharDigitsLength(int number) {
   }  
 
 
-void handleData() {
+int handleData() {
   //(13)(10)+IPD,0,4:hi(13)(10)(13)(10)OK(13)(10)
   
   #ifdef DEBUG
-    Serial.println("\nGot data");
+    getDebugSerial()->println("\nGot data");
+  #else
+    delay(20);
   #endif
 
   //ex +IPD,0,10:hi(32)again(13)
@@ -487,9 +532,19 @@ void handleData() {
   // serial buffer is at comma after D
   char* ipd = cbuf + COMMAND_LEN;
   
+  // pause until we have enough.. this 
+  while (getEspSerial()->available() < 5) {
+    
+  }
+  
   // max channel + length + 2 commas + colon = 9
-  int len = esp->readBytesUntil(':', ipd, 9);
-
+  // TODO replace with my impl. readBytesUntil is doo doo
+  int len = getEspSerial()->readBytesUntil(':', ipd, 9);
+  
+  if (len == 0) {
+    // not found
+    return -1;
+  }
   // space ,0,1:(32)(13)(10)OK(13)(10)(13)(10)
   
   // parse channel
@@ -500,8 +555,8 @@ void handleData() {
   ipd[2] = ',';
   
   #ifdef DEBUG
-    Serial.print("On channel "); 
-    Serial.println(channel);
+    getDebugSerial()->print("On channel "); 
+    getDebugSerial()->println(channel);
   #endif
   
   lastConnection = channel;
@@ -515,44 +570,45 @@ void handleData() {
   
   if (len <= 0) {
     #ifdef DEBUG
-      Serial.println("no data");
+      getDebugSerial()->println("no data");
     #endif
-    return; 
+    return -2; 
   }
   
   // reset so we can print
   
   #ifdef DEBUG
-    Serial.print("Data len "); 
-    Serial.println(len);
+    getDebugSerial()->print("Data len "); 
+    getDebugSerial()->println(len);
   #endif
   
   if (len > 128) {
     // error.. too large
     #ifdef DEBUG
-      Serial.println("Too long");
+      getDebugSerial()->println("Too long");
     #endif
-    return;
+    return -3;
   }
 
   // read input into data buffer
-  int rlen = esp->readBytes(cbuf, len);
+  //int rlen = getEspSerial()->readBytes(cbuf, len);
+  int rlen = readChars(cbuf, 0, len, 2000);
   
   if (rlen != len) {
     #ifdef DEBUG
-      Serial.print("Data read failure "); 
-      Serial.println(rlen);            
+      getDebugSerial()->print("Data read failure "); 
+      getDebugSerial()->println(rlen);            
     #endif
-    return;
+    return -4;
   }
  
   // null terminate
   cbuf[len] = 0;
   
   #ifdef DEBUG
-    Serial.print("Data:");     
+    getDebugSerial()->print("Data:");     
     printCbuf(cbuf, len);
-    Serial.println("");  
+    getDebugSerial()->println("");  
   #endif
           
   char response[] = "ok";
@@ -562,14 +618,14 @@ void handleData() {
   int sendLen = strlen(response) + 2;
   
   // send AT command with channel and message length
-  esp->print("AT+CIPSEND="); 
-  esp->print(channel); 
-  esp->print(","); 
-  esp->print(sendLen); 
-  esp->print("\r\n");
+  getEspSerial()->print("AT+CIPSEND="); 
+  getEspSerial()->print(channel); 
+  getEspSerial()->print(","); 
+  getEspSerial()->print(sendLen); 
+  getEspSerial()->print("\r\n");
   
   //flush wrecks this device
-  //esp->flush();
+  //getEspSerial()->flush();
   
   // replies with
   //(13)(10)(13)(10)OK(13)(10)AT+CIPSEND=0,4(13)(13)(10)>(32)<--[27]
@@ -583,43 +639,43 @@ void handleData() {
   
   if (rCmdLen == -1) {
     #ifdef DEBUG
-      Serial.println("CIPSEND timeout");
+      getDebugSerial()->println("CIPSEND timeout");
     #endif
     
-    return;
+    return -5;
   } else if (rCmdLen != cmdLen) {
     #ifdef DEBUG
-      Serial.print("Error unexp. reply len: "); 
-      Serial.println(rCmdLen);
+      getDebugSerial()->print("Error unexp. reply len: "); 
+      getDebugSerial()->println(rCmdLen);
     #endif
     
-    return;
+    return -6;
   }
   
   if (strstr(cbuf, "busy") != NULL) {
     #ifdef DEBUG
-      Serial.print("Busy");
+      getDebugSerial()->print("Busy");
     #endif
     
-    return;
+    return -7;
   } else if (strstr(cbuf, "OK") == NULL) {
     #ifdef DEBUG
-      Serial.print("Error: ");
-      Serial.println(cbuf);
+      getDebugSerial()->print("Error: ");
+      getDebugSerial()->println(cbuf);
     #endif
     
-    return;
+    return -8;
   }
   
   #ifdef DEBUG 
-    Serial.println("CIPSEND reply");
+    getDebugSerial()->println("CIPSEND reply");
     printCbuf(cbuf, cmdLen);
   #endif
   
   // send data to client
-  esp->print(response);
-  esp->print("\r\n");
-  esp->flush();
+  getEspSerial()->print(response);
+  getEspSerial()->print("\r\n");
+  getEspSerial()->flush();
   
   // reply
   //ok(13)(13)(10)SEND(32)OK(13)(10)<--[14]
@@ -630,34 +686,36 @@ void handleData() {
   
   if (len == -1) {
     #ifdef DEBUG 
-      Serial.println("Data send timeout");            
+      getDebugSerial()->println("Data send timeout");            
     #endif
   } else if (len != 12 + strlen(response)) {
     #ifdef DEBUG 
-      Serial.println("Reply len err");            
+      getDebugSerial()->println("Reply len err");            
     #endif      
   }
 
   if (strstr(cbuf, "OK") == NULL) {
     #ifdef DEBUG     
-      Serial.print("Error: ");
-      Serial.println(cbuf);
+      getDebugSerial()->print("Error: ");
+      getDebugSerial()->println(cbuf);
     #endif
-    return;
+    return -9;
   }
   
   #ifdef DEBUG     
-    Serial.println("Data reply");
+    getDebugSerial()->println("Data reply");
     printCbuf(cbuf, len);        
   #endif
+  
+  return 1;
 }
 
 void handleConnected() {
   #ifdef DEBUG  
-    Serial.println("Connected!");
+    getDebugSerial()->println("Connected!");
   #endif
   // discard
-  int len = esp->readBytesUntil(10, cbuf, BUFFER_SIZE - 1);
+  int len = getEspSerial()->readBytesUntil(10, cbuf, BUFFER_SIZE - 1);
   // TODO parse channel
   // connected[channel] = true;
 }
@@ -666,10 +724,10 @@ void handleClosed() {
   // TODO handle channel
   //0,CLOSED(13)(10)
   #ifdef DEBUG  
-    Serial.println("Conn closed");
+    getDebugSerial()->println("Conn closed");
   #endif
   // consume line
-  int len = esp->readBytesUntil(10, cbuf, BUFFER_SIZE - 1);
+  int len = getEspSerial()->readBytesUntil(10, cbuf, BUFFER_SIZE - 1);
 }
 
 void loop() {
@@ -677,13 +735,13 @@ void loop() {
   
   // the tricky part of AT commands is they vary in length and format, so we don't know how much to read
   // with 6 chars we should be able to identify most allcommands
-  if (esp->available() >= COMMAND_LEN) {
+  if (getEspSerial()->available() >= COMMAND_LEN) {
     #ifdef DEBUG      
-      Serial.print("\n\nSerial available "); 
-      Serial.println(esp->available());
+      getDebugSerial()->print("\n\nSerial available "); 
+      getDebugSerial()->println(getEspSerial()->available());
     #endif
     
-    readChars(cbuf, 0, COMMAND_LEN, 1000);
+    int len = readChars(cbuf, 0, COMMAND_LEN, 1000);
     
     #ifdef DEBUG
       printCbuf(cbuf, COMMAND_LEN);
@@ -702,7 +760,7 @@ void loop() {
       handleClosed();
     } else {
       #ifdef DEBUG
-        Serial.println("Unexpected..");
+        getDebugSerial()->println("Unexpected..");
       #endif
       
       readFor(2000);
