@@ -4,7 +4,12 @@
 // figure out why it fails completely when debug is disabled. probably timing issue
 // parse channel on new connection, close connection
 
-//#define DEBUG
+#define DEBUG
+
+#define UNKNOWN_COMMAND 0
+#define IPD_COMMAND 1
+#define CONNECTED_COMMAND 2
+#define DISCONNECTED_COMMAND 3
 
 #define ESP_RX 3
 #define ESP_TX 4
@@ -34,7 +39,8 @@ Stream* debug;
 Stream* esp;
 
 // FIXME handle array of connections
-//bool[] connections = new bool[5];
+bool connections[10];
+
 int lastConnection = -1;
 
 Stream* getEspSerial() {
@@ -64,9 +70,9 @@ void setup() {
   
   lastReset = millis();
 
-  //#ifdef DEBUG
+  #ifdef DEBUG
     getDebugSerial()->println("ok setup");
-  //#endif
+  #endif
 }
 
 //int print(char* text) {
@@ -337,16 +343,6 @@ void resetCbuf(char cbuf[], int size) {
  } 
 }
 
-int clearSerial() {
-  int count = 0;
-  while (getEspSerial()->available() > 0) {
-    getEspSerial()->read();
-    count++;
-  }
-  
-  return count;
-}
-
 void printCbuf(char cbuf[], int len) {
   
   #ifdef DEBUG  
@@ -419,9 +415,6 @@ int readBytesUntil(char cbuf[], uint8_t match, int maxReadLen, int timeout) {
       cbuf[pos++] = in;
       
       if (pos == maxReadLen) {
-        // max read, not found
-        // not found starts at -2 and indicates number of bytes read - 1
-        //return -1*(pos + 1);
         return 0;
       }    
     }
@@ -519,11 +512,7 @@ int handleData() {
   #endif
 
   //ex +IPD,0,10:hi(32)again(13)
-  // cbuf ,0,10:    
-  
-  // debug output
-  //readFor(2000);
-  //return 1;
+  // cbuf ,0,10:
   
   // serial buffer is at comma after D
   char* ipd = cbuf + COMMAND_LEN;
@@ -625,8 +614,6 @@ int handleData() {
   
   // replies with
   //(13)(10)(13)(10)OK(13)(10)AT+CIPSEND=0,4(13)(13)(10)>(32)<--[27]
-  // ctrl-c data results in
-  //(253)(6)(13)(10)OK(13)(10)AT+CIPSEND=0,4(13)(13)(10)>(32)
   
   // should be same size everytime + send length                    
   int cmdLen = 26 + getCharDigitsLength(sendLen);
@@ -708,31 +695,68 @@ int handleData() {
   return 1;
 }
 
-void handleConnected() {
-  #ifdef DEBUG  
-    getDebugSerial()->println("Connected!");
-  #endif
-  // discard
-  int len = getEspSerial()->readBytesUntil(10, cbuf, BUFFER_SIZE - 1);
-  // TODO parse channel
-  // connected[channel] = true;
+#define CONNECT_CMD_LEN 11
+#define CLOSED_CMD_LEN 10
+
+int parseChannel(char *cbuf, bool open) {
+
+  cbuf[1] = 0;
+  int channel = atoi(cbuf);
+  // replace char
+  cbuf[1] = ',';
+  
+  if (channel >= 0 && channel <= 10) {
+    connections[channel] = open;  
+    return channel;  
+  } else {
+    return -1;
+  }  
 }
 
-void handleClosed() {
-  // TODO handle channel
-  //0,CLOSED(13)(10)
+int handleConnected() {
+  //0,CONNECT(13)(10)  
+  int channel = parseChannel(cbuf, true);
+      
   #ifdef DEBUG  
-    getDebugSerial()->println("Conn closed");
+    getDebugSerial()->print("Connected on ");
+    getDebugSerial()->println(channel);
   #endif
-  // consume line
-  int len = getEspSerial()->readBytesUntil(10, cbuf, BUFFER_SIZE - 1);
+
+  //CONNECT_CMD_LEN - (COMMAND_LEN + 1)
+  int len = readBytesUntil(cbuf + COMMAND_LEN, 10, CONNECT_CMD_LEN - COMMAND_LEN, 3000);
+  
+  if (len > 0) {
+    return 1;
+  } else {
+    return len; 
+  }
+}
+
+int handleClosed() {
+  //0,CLOSED(13)(10)
+  int channel = parseChannel(cbuf, false);
+
+  #ifdef DEBUG  
+    getDebugSerial()->print("Closed on ");
+    getDebugSerial()->println(channel);
+  #endif
+  
+  // consume rest of command
+  int len = readBytesUntil(cbuf + COMMAND_LEN, 10, CLOSED_CMD_LEN - COMMAND_LEN, 3000);  
+  
+  if (len > 0) {    
+    return 1;
+  } else {
+    return len; 
+  }  
 }
 
 void loop() {
   //debugLoop();
 
   int result = 0;
-
+  int command = 0;
+  
   // the tricky part of AT commands is they vary in length and format, so we don't know how much to read
   // with 6 chars we should be able to identify most allcommands
   if (getEspSerial()->available() >= COMMAND_LEN) {
@@ -750,20 +774,29 @@ void loop() {
     // not using Serial.find because if it doesn't match we lose the data. so not helpful
 
     if (strstr(cbuf, "+IPD") != NULL) {
-      //(13)(10)+IPD,0,4:hi(13)(10)(13)(10)OK(13)(10)      
+      //(13)(10)+IPD,0,4:hi(13)(10)(13)(10)OK(13)(10) 
       result = handleData();
+      command = IPD_COMMAND;
     } else if (strstr(cbuf, ",CONN") != NULL) {
-      getDebugSerial()->println("Connected!");
+      #ifdef DEBUG      
+        getDebugSerial()->println("Connected!");
+      #endif        
       //0,CONNECT(13)(10)      
-      handleConnected();
+      result = handleConnected();
+      command = CONNECTED_COMMAND;
     } else if (strstr(cbuf, "CLOS") != NULL) {
-      getDebugSerial()->println("Disconnected!");
+      #ifdef DEBUG
+        getDebugSerial()->println("Disconnected!");
+      #endif        
       lastConnection = -1;
-      handleClosed();
+      result = handleClosed();
+      command = DISCONNECTED_COMMAND;     
     } else {
-      //#ifdef DEBUG
+      #ifdef DEBUG
         getDebugSerial()->println("Unexpected..");
-      //#endif
+      #endif
+      result = -1;
+      command = DISCONNECTED_COMMAND;
       
       readFor(2000);
       
@@ -771,14 +804,16 @@ void loop() {
       resetEsp8266();
     }
 
-    if (result != 1) {
-      getDebugSerial()->print("Loop error: ");
-      getDebugSerial()->println(result);
-    } else {
-      getDebugSerial()->println("ok");
-      // might help??
-      //delay(50);
-    }
+    #ifdef DEBUG
+      if (result != 1) {
+        getDebugSerial()->print("Loop error on command [");
+        getDebugSerial()->print(command);
+        getDebugSerial()->print("]: ");      
+        getDebugSerial()->println(result);
+      } else {
+        getDebugSerial()->println("ok");
+      }
+    #endif
     
     if (false) {
       // health check        
@@ -787,9 +822,7 @@ void loop() {
       }
     }
     
-    resetCbuf(cbuf, BUFFER_SIZE);
-    // discard remaining. should not be any remaining
-    clearSerial();      
+    resetCbuf(cbuf, BUFFER_SIZE);    
   }
   
   //checkReset();  
