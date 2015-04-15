@@ -1,10 +1,6 @@
 #include <SoftwareSerial.h>
 
-// TODO
-// figure out why it fails completely when debug is disabled. probably timing issue
-// parse channel on new connection, close connection
-
-#define DEBUG
+//#define DEBUG
 
 #define UNKNOWN_COMMAND 0
 #define IPD_COMMAND 1
@@ -41,8 +37,6 @@ Stream* esp;
 // FIXME handle array of connections
 bool connections[10];
 
-int lastConnection = -1;
-
 Stream* getEspSerial() {
   return esp;
 }
@@ -58,12 +52,12 @@ void setup() {
   espSerial.begin(9600); // Soft serial connection to ESP8266
   esp = &espSerial;
   
-  //#ifdef DEBUG
+  #ifdef DEBUG
     Serial.begin(9600); while(!Serial); // UART serial debug
     debug = &Serial;
-  //#else
-  //  debug = NULL;
-  //#endif
+  #else
+    debug = NULL;
+  #endif
 
   //configureEsp8266();
   configureServer();
@@ -75,30 +69,11 @@ void setup() {
   #endif
 }
 
-//int print(char* text) {
-//  int len = strlen(text);
-//  
-//  #ifdef DEBUG
-//    getDebugSerial()->print("-->");
-//    // ugh
-//    getEspSerial()->print(len);
-//    getDebugSerial()->print(text);
-//  #endif
-//
-//  int writeLen = getEspSerial()->print(text);
-//  
-//  if (writeLen != len) {
-//    #ifdef DEBUG
-//      getDebugSerial()->print("Write fail. wrote x, but exp. y");
-//    #endif    
-//  }
-//  
-//  return writeLen;
-//}
-
 void resetEsp8266() {
-  if (lastConnection != -1) {
-    closeConnection(lastConnection);
+  for (int i = 0; i < 10; i++) {
+    if (connections[i]) {
+      closeConnection(i);  
+    }
   }
   
   stopServer();
@@ -119,6 +94,7 @@ int printDebug(char* text) {
 
 // from adafruit lib
 void debugLoop(void) {
+  #ifdef DEBUG  
   if(!debug) for(;;); // If no debug connection, nothing to do.
 
   getDebugSerial()->println("\n========================");
@@ -126,6 +102,7 @@ void debugLoop(void) {
     if(getDebugSerial()->available())  getEspSerial()->write(getDebugSerial()->read());
     if(getEspSerial()->available()) getDebugSerial()->write(getEspSerial()->read());
   }
+  #endif  
 }
 
 void configureEsp8266() {
@@ -344,28 +321,24 @@ void resetCbuf(char cbuf[], int size) {
 }
 
 void printCbuf(char cbuf[], int len) {
-  
   #ifdef DEBUG  
-  long start = millis();
-
-  for (int i = 0; i < len; i++) {
-      if (cbuf[i] <= 32 || cbuf[i] >= 127) {
-        // not printable. print the char value
-        getDebugSerial()->print("(");
-        getDebugSerial()->print((uint8_t)cbuf[i]);
-        getDebugSerial()->print(")");
-      } else {
-        getDebugSerial()->write(cbuf[i]);
-      }
-  }
- 
-  long end = millis();
-  getDebugSerial()->print(" in ");
-  getDebugSerial()->print(end - start);
-  getDebugSerial()->println("ms");
-  #else
-    //getDebugSerial()->println("delaying");
-    delay(50);
+    long start = millis();
+  
+    for (int i = 0; i < len; i++) {
+        if (cbuf[i] <= 32 || cbuf[i] >= 127) {
+          // not printable. print the char value
+          getDebugSerial()->print("(");
+          getDebugSerial()->print((uint8_t)cbuf[i]);
+          getDebugSerial()->print(")");
+        } else {
+          getDebugSerial()->write(cbuf[i]);
+        }
+    }
+   
+    long end = millis();
+    getDebugSerial()->print(" in ");
+    getDebugSerial()->print(end - start);
+    getDebugSerial()->println("ms");
   #endif
 }
 
@@ -501,102 +474,7 @@ int getCharDigitsLength(int number) {
     }
   }  
 
-
-int handleData() {
-  //(13)(10)+IPD,0,4:hi(13)(10)(13)(10)OK(13)(10)
-  
-  #ifdef DEBUG
-    getDebugSerial()->println("\nGot data");
-  #else
-    delay(20);
-  #endif
-
-  //ex +IPD,0,10:hi(32)again(13)
-  // cbuf ,0,10:
-  
-  // serial buffer is at comma after D
-  char* ipd = cbuf + COMMAND_LEN;
-  
-  // max channel + data length + 2 commas + colon = 9
-  int len = readBytesUntil(ipd, ':', BUFFER_SIZE - COMMAND_LEN, 3000);
-  
-  if (len == 0) {
-    // not found
-    return -1;
-  } else if (len == -1) {
-    // timeout
-    return -2;
-  }
-
-  // space ,0,1:(32)(13)(10)OK(13)(10)(13)(10)
-  
-  // parse channel
-  // null term after channel for atoi
-  ipd[2] = 0;
-  int channel = atoi(ipd + 1);
-  // reset
-  ipd[2] = ',';
-  
-  #ifdef DEBUG
-    getDebugSerial()->print("On channel "); 
-    getDebugSerial()->println(channel);
-  #endif
-  
-  lastConnection = channel;
-  
-  //ipd[9] = 0;
-  // length starts at pos 3
-  len = atoi(ipd + 3);
-  
-  // subtract 2, don't want lf/cr
-  len-=2;
-  
-  if (len <= 0) {
-    #ifdef DEBUG
-      getDebugSerial()->println("no data");
-    #endif
-    return -2; 
-  }
-  
-  // reset so we can print
-  
-  #ifdef DEBUG
-    getDebugSerial()->print("Data len "); 
-    getDebugSerial()->println(len);
-  #endif
-  
-  if (len > 128) {
-    // error.. too large
-    #ifdef DEBUG
-      getDebugSerial()->println("Too long");
-    #endif
-    return -3;
-  }
-
-  // read input into data buffer
-  int rlen = readChars(cbuf, 0, len, 3000);
-  
-  if (rlen == -1) {
-    // timeout
-    return -4;
-  } else if (rlen != len) {
-    #ifdef DEBUG
-      getDebugSerial()->print("Data read failure "); 
-      getDebugSerial()->println(rlen);            
-    #endif
-    return -4;
-  }
- 
-  // null terminate
-  cbuf[len] = 0;
-  
-  #ifdef DEBUG
-    getDebugSerial()->print("Data:");     
-    printCbuf(cbuf, len);
-    getDebugSerial()->println("");  
-  #endif
-          
-  char response[] = "ok";
+int sendReply(int channel, char response[]) {
   
   // NOTE: print or write works for char data, must use print for non-char to print ascii
   
@@ -665,7 +543,7 @@ int handleData() {
 
   // fixed length reply
   // timed out a few times over 12h period with 1s timeout. increasing timeout to 5s
-  len = readChars(cbuf, 0, strlen(response) + 12, 5000);
+  int len = readChars(cbuf, 0, strlen(response) + 12, 5000);
   
   if (len == -1) {
     #ifdef DEBUG 
@@ -690,9 +568,102 @@ int handleData() {
   #ifdef DEBUG     
     getDebugSerial()->println("Data reply");
     printCbuf(cbuf, len);        
-  #endif
+  #endif  
   
   return 1;
+}
+
+int handleData() {
+  //(13)(10)+IPD,0,4:hi(13)(10)(13)(10)OK(13)(10)
+  
+  #ifdef DEBUG      
+    getDebugSerial()->println("Received data (IPD)");
+  #endif      
+
+  //ex +IPD,0,10:hi(32)again(13)
+  //cbuf ,0,10:
+  
+  // serial buffer is at comma after D
+  char* ipd = cbuf + COMMAND_LEN;
+  
+  // max channel + data length + 2 commas + colon = 9
+  int len = readBytesUntil(ipd, ':', BUFFER_SIZE - COMMAND_LEN, 3000);
+  
+  if (len == 0) {
+    // not found
+    return -1;
+  } else if (len == -1) {
+    // timeout
+    return -2;
+  }
+
+  // space ,0,1:(32)(13)(10)OK(13)(10)(13)(10)
+  
+  // parse channel
+  // null term after channel for atoi
+  ipd[2] = 0;
+  int channel = atoi(ipd + 1);
+  // reset
+  ipd[2] = ',';
+  
+  #ifdef DEBUG
+    getDebugSerial()->print("On channel "); 
+    getDebugSerial()->println(channel);
+  #endif
+  
+  //ipd[9] = 0;
+  // length starts at pos 3
+  len = atoi(ipd + 3);
+  
+  // subtract 2, don't want lf/cr
+  len-=2;
+  
+  if (len <= 0) {
+    #ifdef DEBUG
+      getDebugSerial()->println("no data");
+    #endif
+    return -2; 
+  }
+  
+  // reset so we can print
+  
+  #ifdef DEBUG
+    getDebugSerial()->print("Data len "); 
+    getDebugSerial()->println(len);
+  #endif
+  
+  if (len > 128) {
+    // error.. too large
+    #ifdef DEBUG
+      getDebugSerial()->println("Too long");
+    #endif
+    return -3;
+  }
+
+  // read input into data buffer
+  int rlen = readChars(cbuf, 0, len, 3000);
+  
+  if (rlen == -1) {
+    // timeout
+    return -4;
+  } else if (rlen != len) {
+    #ifdef DEBUG
+      getDebugSerial()->print("Data read failure "); 
+      getDebugSerial()->println(rlen);            
+    #endif
+    return -4;
+  }
+ 
+  // null terminate
+  cbuf[len] = 0;
+  
+  #ifdef DEBUG
+    getDebugSerial()->print("Data:");     
+    printCbuf(cbuf, len);
+    getDebugSerial()->println("");  
+  #endif
+  
+  return sendReply(channel, "ok");
 }
 
 #define CONNECT_CMD_LEN 11
@@ -737,7 +708,7 @@ int handleClosed() {
   int channel = parseChannel(cbuf, false);
 
   #ifdef DEBUG  
-    getDebugSerial()->print("Closed on ");
+    getDebugSerial()->print("Disconnected on ");
     getDebugSerial()->println(channel);
   #endif
   
@@ -757,8 +728,8 @@ void loop() {
   int result = 0;
   int command = 0;
   
-  // the tricky part of AT commands is they vary in length and format, so we don't know how much to read
-  // with 6 chars we should be able to identify most allcommands
+  // the tricky part of AT commands is they vary in length and format, so we don't know how much to read without knowing what it is
+  // There are no commands less than 6 chars and with 6 chars we should be able to identify all possible commands
   if (getEspSerial()->available() >= COMMAND_LEN) {
     #ifdef DEBUG      
       getDebugSerial()->print("\n\nSerial available "); 
@@ -777,18 +748,11 @@ void loop() {
       //(13)(10)+IPD,0,4:hi(13)(10)(13)(10)OK(13)(10) 
       result = handleData();
       command = IPD_COMMAND;
-    } else if (strstr(cbuf, ",CONN") != NULL) {
-      #ifdef DEBUG      
-        getDebugSerial()->println("Connected!");
-      #endif        
+    } else if (strstr(cbuf, ",CONN") != NULL) {      
       //0,CONNECT(13)(10)      
       result = handleConnected();
       command = CONNECTED_COMMAND;
     } else if (strstr(cbuf, "CLOS") != NULL) {
-      #ifdef DEBUG
-        getDebugSerial()->println("Disconnected!");
-      #endif        
-      lastConnection = -1;
       result = handleClosed();
       command = DISCONNECTED_COMMAND;     
     } else {

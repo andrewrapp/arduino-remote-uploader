@@ -7,6 +7,7 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Date;
+import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class WifiPing {
@@ -29,6 +30,18 @@ public class WifiPing {
 		}
 	}
 	
+	Random random = new Random();
+	
+	private byte[] getByteArray(int size) {
+		byte[] messageBytes = new byte[size];
+		for (int i = 0; i < size - 2; i++) {
+			messageBytes[i] = (byte) random.nextInt(256);
+		}
+		messageBytes[size - 2] = (byte)13;
+		messageBytes[size - 1] = (byte)10;
+		
+		return messageBytes;
+	}
 	public void ping() throws IOException, InterruptedException {
 		System.out.println(new Date() + " Connecting");
 
@@ -106,17 +119,10 @@ public class WifiPing {
 			String message = messageBuilder.toString();
 			//String message = "hi there how are you doing today?"; 
 			
-			System.out.println("Message len is " + message.length());
-			
 			try {
-				byte[] messageBytes = (message + "\r\n").getBytes();
-				
-//				byte[] messageBytes = new byte[32];
-//				for (int i = 0; i < 32; i++) {
-//					messageBytes[i] = (byte) 200;
-//				}
-				
-				sendFakePacket(messageBytes, outputStream);
+//				byte[] messageBytes = (message + "\r\n").getBytes();
+				// 45 seems to be max size w/o errors
+				sendFakePacket(getByteArray(45), outputStream);
 			} catch (IOException e) {
 				System.out.println(new Date() + " unable to send packet " + e.toString());
 				break;
@@ -130,7 +136,7 @@ public class WifiPing {
 					fails.getAndIncrement();
 					System.out.println(new Date() + " No ack. Fails " + fails.get() + " of " + attempts.get());
 				} else {
-					System.out.println(new Date() + " Success");
+//					System.out.println(new Date() + " Success");
 				}
 				
 				stringBuilder = new StringBuilder();
@@ -148,7 +154,7 @@ public class WifiPing {
 		// still and issue with esp8266 where if it closes the connection and restarts, we can connect and
 		// write data but it ignores it for a while
 		
-		System.out.println("Sending message " + message);
+//		System.out.println("Sending message " + message);
 		outputStream.write(message);
 		outputStream.flush();
 	}
