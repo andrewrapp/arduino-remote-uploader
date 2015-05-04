@@ -17,8 +17,10 @@ public class WifiPing {
 
 	final static AtomicInteger attempts = new AtomicInteger();
 	final static AtomicInteger fails = new AtomicInteger();
+	final static long start = System.currentTimeMillis();
 	
 	private Socket socket = null;	
+
 	
 	public WifiPing() throws UnknownHostException, IOException, InterruptedException {
 		try {
@@ -32,16 +34,30 @@ public class WifiPing {
 	
 	Random random = new Random();
 	
-	private byte[] getByteArray(int size) {
-		byte[] messageBytes = new byte[size];
-		for (int i = 0; i < size - 2; i++) {
+	private byte[] getRandomByteArray(int size) {
+		byte[] messageBytes = new byte[size + 2];
+		for (int i = 0; i < size; i++) {
 			messageBytes[i] = (byte) random.nextInt(256);
 		}
-		messageBytes[size - 2] = (byte)13;
-		messageBytes[size - 1] = (byte)10;
+		messageBytes[size] = (byte)13;
+		messageBytes[size + 1] = (byte)10;
 		
 		return messageBytes;
 	}
+	
+	private byte[] getByteArray(int size) {
+		byte[] messageBytes = new byte[size + 2];
+		int count = 0;
+		
+		for (int i = 0; i < size; i++) {
+			messageBytes[i] = (byte) count++;
+		}
+		messageBytes[size] = (byte)13;
+		messageBytes[size + 1] = (byte)10;
+		
+		return messageBytes;
+	}
+	
 	public void ping() throws IOException, InterruptedException {
 		System.out.println(new Date() + " Connecting");
 
@@ -65,22 +81,26 @@ public class WifiPing {
 			@Override
 			public void run() {
 				int ch = 0;
+				int lastCh = 0;
 				
 				// reply always terminated with 13,10
+				// so this works well until your data contains 13,10
 				try {
 					while ((ch = inputStream.read()) > -1) {
 						if (ch > 32 && ch < 127) {
 							stringBuilder.append((char)ch);
-							//System.out.print("-->" + (char)ch);
+//							System.out.print("-->" + (char)ch);
 						} else {
-							//System.out.print("-->" + ch);						
+//							System.out.print("-->" + ch);						
 						}
 						
-						if (ch == 10) {
+						if (ch == 10 && lastCh == 13) {
 							synchronized (lock) {
 								lock.notify();
 							}
 						}
+						
+						lastCh = ch;
 					}
 					
 					System.out.println(new Date() + " end of input stream reached. closing socket");
@@ -110,19 +130,19 @@ public class WifiPing {
 			messageBuilder.append((char)(i + 65));
 		}
 		
-		Thread.sleep(50);
+		//Thread.sleep(50);
 
 		// send packet every 1 minute. log failures
 		while (true) {
 			attempts.getAndIncrement();
 			
-			String message = messageBuilder.toString();
-			//String message = "hi there how are you doing today?"; 
+			String message = messageBuilder.toString(); 
+//			byte[] messageBytes = ("hi" + "\r\n").getBytes();
 			
 			try {
-//				byte[] messageBytes = (message + "\r\n").getBytes();
-				// 45 seems to be max size w/o errors
-				sendFakePacket(getByteArray(45), outputStream);
+				// 43 seems to be max size w/o errors
+				//sendFakePacket(getRandomByteArray(32), outputStream);
+				sendFakePacket(getByteArray(32), outputStream);
 			} catch (IOException e) {
 				System.out.println(new Date() + " unable to send packet " + e.toString());
 				break;
@@ -136,13 +156,18 @@ public class WifiPing {
 					fails.getAndIncrement();
 					System.out.println(new Date() + " No ack. Fails " + fails.get() + " of " + attempts.get());
 				} else {
+					if (attempts.get() % 1000 == 0) {
+						// very rough statistic. failures will skew this
+						System.out.println("Packets per sec " + 1.0*attempts.get() / (1.0*(System.currentTimeMillis() - start) / 1000) + " " + attempts.get() + " packets");
+					}
+					
 //					System.out.println(new Date() + " Success");
 				}
 				
 				stringBuilder = new StringBuilder();
 			}
 			
-			Thread.sleep(100);
+			//Thread.sleep(100);
 		}
 	}
 	

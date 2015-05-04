@@ -1,6 +1,10 @@
+/**
+DEPRECATED -- this code and many bug fixes have been migrated to the ESP library
+*/
+
 #include <SoftwareSerial.h>
 
-//#define DEBUG
+#define DEBUG
 
 #define UNKNOWN_COMMAND 0
 #define IPD_COMMAND 1
@@ -17,6 +21,8 @@
 // replace with wifi creds
 #define WIFI_NETWORK ""
 #define WIFI_PASSWORD ""
+#define CONNECT_CMD_LEN 11
+#define CLOSED_CMD_LEN 10
 
 // may not be necessary. instead do a AT command and only reset if no response
 #define RESET_MINS 180
@@ -34,7 +40,7 @@ char cbuf[BUFFER_SIZE];
 Stream* debug;
 Stream* esp;
 
-// FIXME handle array of connections
+// documentation seems to indciate a max of 5 connections but not very clear
 bool connections[10];
 
 Stream* getEspSerial() {
@@ -45,12 +51,11 @@ Stream* getDebugSerial() {
   return debug;
 }
 
-void setup() {
-  // first run AT to see if alive
-  delay(3000);
-  
+void setup() {  
   espSerial.begin(9600); // Soft serial connection to ESP8266
   esp = &espSerial;
+  
+  // TODO check for reset on startup. if both devices are powered on then ESP will send reset gibberish
   
   #ifdef DEBUG
     Serial.begin(9600); while(!Serial); // UART serial debug
@@ -90,19 +95,6 @@ int printDebug(char* text) {
   #endif
   
   return -1;
-}
-
-// from adafruit lib
-void debugLoop(void) {
-  #ifdef DEBUG  
-  if(!debug) for(;;); // If no debug connection, nothing to do.
-
-  getDebugSerial()->println("\n========================");
-  for(;;) {
-    if(getDebugSerial()->available())  getEspSerial()->write(getDebugSerial()->read());
-    if(getEspSerial()->available()) getDebugSerial()->write(getEspSerial()->read());
-  }
-  #endif  
 }
 
 void configureEsp8266() {
@@ -476,6 +468,10 @@ int getCharDigitsLength(int number) {
 
 int sendReply(int channel, char response[]) {
   
+  if (!connections[channel]) {
+    // not connected on this id
+    return -99;
+  }
   // NOTE: print or write works for char data, must use print for non-char to print ascii
   
   int sendLen = strlen(response) + 2;
@@ -666,9 +662,6 @@ int handleData() {
   return sendReply(channel, "ok");
 }
 
-#define CONNECT_CMD_LEN 11
-#define CLOSED_CMD_LEN 10
-
 int parseChannel(char *cbuf, bool open) {
 
   cbuf[1] = 0;
@@ -731,7 +724,7 @@ void loop() {
   // the tricky part of AT commands is they vary in length and format, so we don't know how much to read without knowing what it is
   // There are no commands less than 6 chars and with 6 chars we should be able to identify all possible commands
   if (getEspSerial()->available() >= COMMAND_LEN) {
-    #ifdef DEBUG      
+    #ifdef DEBUG
       getDebugSerial()->print("\n\nSerial available "); 
       getDebugSerial()->println(getEspSerial()->available());
     #endif
