@@ -159,8 +159,8 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	
 	private void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
 		CliOptions cliOptions = getCliOptions();
-	
-		cliOptions.getOptions().addOption(
+		
+		cliOptions.addOption(
 				OptionBuilder
 				.withLongOpt(serialPort)
 				.hasArg()
@@ -168,7 +168,7 @@ public class NordicSketchUploader extends SerialSketchUploader {
 				.withDescription("Serial port of of Arduino running NordicSPI2Serial sketch (e.g. /dev/tty.usbserial-A6005uRz). Required")
 				.create("p"));
 
-		cliOptions.getOptions().addOption(
+		cliOptions.addOption(
 				OptionBuilder
 				.withLongOpt(baudRate)
 				.hasArg()
@@ -177,23 +177,16 @@ public class NordicSketchUploader extends SerialSketchUploader {
 				.withDescription("Baud rate of Arduino. Required")
 				.create("b"));
 		
+		cliOptions.build();
+		
 		CommandLine commandLine = cliOptions.parse(args);
 
 		if (commandLine != null) {
-			boolean verbose = false;
-			
-			if (commandLine.hasOption(CliOptions.verboseArg)) {
-				verbose = true;
-			}
-			
-			//public void process(String file, int pageSize, final int ackTimeoutMillis, int arduinoTimeoutSec, int retriesPerPacket, int delayBetweenRetriesMillis, final boolean verbose, final Map<String,Object> context) throws IOException {
-			//????public void process(String file, String device, int speed, String nordicAddress, int ackTimeout, int arduinoTimeout, int retriesPerPacket, int delayBetweenRetriesMillis, boolean verbose, int timeout) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
-			// cmd line
 			new NordicSketchUploader().processNordic(
 					commandLine.getOptionValue(CliOptions.sketch), 
 					commandLine.getOptionValue(serialPort), 
 					cliOptions.getIntegerOption(baudRate), 
-					verbose,
+					commandLine.hasOption(CliOptions.verboseArg),
 					cliOptions.getIntegerOption(CliOptions.ackTimeoutMillisArg),
 					cliOptions.getIntegerOption(CliOptions.arduinoTimeoutArg),
 					cliOptions.getIntegerOption(CliOptions.retriesPerPacketArg),

@@ -19,16 +19,19 @@
 
 package com.rapplogic.aru.uploader;
 
+import java.util.List;
 import java.util.Map;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
 import org.apache.commons.cli.HelpFormatter;
+import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 import org.apache.commons.cli.PosixParser;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
 public class CliOptions {
@@ -45,19 +48,27 @@ public class CliOptions {
 	final private Options options = new Options();
 	private CommandLine commandLine;
 	
+	private List<Option> optionList = Lists.newArrayList();
+	
 	private Map<String, String> defaults = Maps.newHashMap();
 	
 	public CliOptions() {
-		options.addOption(OptionBuilder
+		//options.addOption("h", "help", false, "Show help");
+	}
+	
+	private void addSharedOptions() {
+		optionList.add(OptionBuilder
 				.withLongOpt(sketch)
 				.hasArg()
 				.isRequired(true)
 				.withDescription("Path to compiled sketch (compiled by Arduino IDE). Required")
 				.create("s"));
 		
+		// following are optional
+		
 		defaults.put(ackTimeoutMillisArg, "5000");
 		
-		options.addOption(
+		optionList.add(
 				OptionBuilder
 				.withLongOpt(ackTimeoutMillisArg)
 				.hasArg()
@@ -68,7 +79,7 @@ public class CliOptions {
 
 		defaults.put(arduinoTimeoutArg, "60");
 		
-		options.addOption(
+		optionList.add(
 				OptionBuilder
 				.withLongOpt(arduinoTimeoutArg)
 				.hasArg()
@@ -79,7 +90,7 @@ public class CliOptions {
 		
 		defaults.put(retriesPerPacketArg, "10");
 		
-		options.addOption(
+		optionList.add(
 				OptionBuilder
 				.withLongOpt(retriesPerPacketArg)
 				.hasArg()
@@ -90,7 +101,7 @@ public class CliOptions {
 		
 		defaults.put(delayBetweenRetriesMillisArg, "250");
 		
-		options.addOption(
+		optionList.add(
 				OptionBuilder
 				.withLongOpt(delayBetweenRetriesMillisArg)
 				.hasArg()
@@ -99,21 +110,36 @@ public class CliOptions {
 				.withDescription("Delay before retrying to send a packet (in milliseconds). Default is " + defaults.get(delayBetweenRetriesMillisArg))
 				.create("d"));
 		
-		options.addOption(
+		optionList.add(
 				OptionBuilder
 				.withLongOpt(verboseArg)
 				.isRequired(false)
 				.withDescription("Show debug output")
 				.create("d"));		
 		
-		options.addOption(
+		optionList.add(
 				OptionBuilder
 				.withLongOpt("help")
 				.isRequired(false)
 				.withDescription("Show help")
-				.create("h"));				
+				.create("h"));		
+	}
+	
+	public Map<String, String> getDefaults() {
+		return defaults;
+	}
 
-		//options.addOption("h", "help", false, "Show help");
+	public void addOption(Option option) {
+		optionList.add(option);
+	}
+	
+	public void build() {
+		// cli sorts alphabetically so order doesn't matter
+		addSharedOptions();
+		
+		for (Option option : optionList) {
+			options.addOption(option);
+		}
 	}
 
 	private void printHelp() {
@@ -151,7 +177,7 @@ public class CliOptions {
 		return null;
 	}
 	
-	public Options getOptions() {
+	private Options getOptions() {
 		return options;
 	}
 }

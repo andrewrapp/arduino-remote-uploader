@@ -50,10 +50,19 @@ public abstract class SketchUploader extends SketchCore {
 	// somewhat redundant
 	public final int CONTROL_START_FLASH = 0x40;
 	
+	// repsonse/error codes must sync the arduino header file
 	public final int OK = 1;
 	public final int START_OVER = 2;
 	public final int TIMEOUT = 3;
 	public final int RETRY = 0xff;
+	public final int FLASH_ERROR = 4;
+	public final int EEPROM_ERROR = 5;
+	public final int EEPROM_WRITE_ERROR = 6;
+	public final int EEPROM_READ_ERROR = 7;
+	// serial lines not connected or reset pin not connected
+	public final int NOBOOTLOADER_ERROR = 8;
+	public final int VERIFY_PAGE_ERROR = 9;
+	public final int ADDRESS_SKIP_ERROR = 0xa;
 	
 	private boolean verbose;
 	//private boolean programInterrupt;
@@ -122,6 +131,7 @@ public abstract class SketchUploader extends SketchCore {
 			if (reply == null) {
 				//System.out.println("Timeout waiting for reply. timeleft is now " + timeLeftMillis);
 			} else {
+
 				switch (reply[2]) {
 				case OK:
 					int packetId = getPacketId(reply);
@@ -147,6 +157,15 @@ public abstract class SketchUploader extends SketchCore {
 				case RETRY:
 					// fictitious reply. does not come from arduino
 					throw new NoAckException("Received RETRY ack");
+				case FLASH_ERROR:
+				case EEPROM_ERROR:
+				case EEPROM_WRITE_ERROR:
+				case EEPROM_READ_ERROR:
+				case NOBOOTLOADER_ERROR:
+				case VERIFY_PAGE_ERROR:
+				case ADDRESS_SKIP_ERROR:					
+					// TODO handle specific errors
+					throw new StartOverException("Upload failed: error code " + reply[2]);
 				default:
 					throw new StartOverException("Unexpected response code from arduino: " + reply);						
 				}				
@@ -328,11 +347,13 @@ public abstract class SketchUploader extends SketchCore {
 		} catch (InterruptedException e) {
 			// kill signal
 			System.out.println("Interrupted during programming.. exiting");
-			return;
 		} catch (StartOverException e) {
+			System.err.println("Flash failed " + e.toString());
 			log.warn("Start over " + e.getMessage());
 		} catch (Exception e) {
 			log.error("Unexpected error", e);
+			System.err.println("Unexpected error " + e.toString());
+			e.printStackTrace();
 		} finally {
 			try {
 				close();

@@ -24,8 +24,7 @@
     	<includes>
     	    <include>librxtx*</include>
     	    <include>*.dll</include>
-    	    <include>xbee-uploader.sh</include>
-    	    <include>nordic-uploader.sh</include>
+    	    <include>*.sh</include>
     	</includes>
     <fileMode>755</fileMode>	
       <outputDirectory>/</outputDirectory>

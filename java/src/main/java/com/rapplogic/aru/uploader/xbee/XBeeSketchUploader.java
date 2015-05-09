@@ -22,12 +22,10 @@ package com.rapplogic.aru.uploader.xbee;
 import java.io.IOException;
 import java.text.ParseException;
 import java.util.Map;
-import java.util.Queue;
 
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.OptionBuilder;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.rapplogic.aru.uploader.CliOptions;
 import com.rapplogic.aru.uploader.SketchUploader;
@@ -149,7 +147,7 @@ public class XBeeSketchUploader extends SketchUploader {
 	private void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException {
 		CliOptions cliOptions = getCliOptions();
 	
-		cliOptions.getOptions().addOption(
+		cliOptions.addOption(
 				OptionBuilder
 				.withLongOpt(serialPort)
 				.hasArg()
@@ -157,7 +155,7 @@ public class XBeeSketchUploader extends SketchUploader {
 				.withDescription("Serial port of of local xbee (host) radio) (e.g. /dev/tty.usbserial-A6005uRz). Required")
 				.create("p"));
 
-		cliOptions.getOptions().addOption(
+		cliOptions.addOption(
 				OptionBuilder
 				.withLongOpt(baudRate)
 				.hasArg()
@@ -166,7 +164,7 @@ public class XBeeSketchUploader extends SketchUploader {
 				.withDescription("Baud rate of local xbee (host) radio serial port. Required")
 				.create("b"));
 		
-		cliOptions.getOptions().addOption(
+		cliOptions.addOption(
 				OptionBuilder
 				.withLongOpt(xbeeAddress)
 				.hasArg()
@@ -174,22 +172,18 @@ public class XBeeSketchUploader extends SketchUploader {
 				.withDescription("Address (64-bit) of remote XBee radio (e.g. 0013A21240AB9856)")
 				.create("x"));
 		
+		cliOptions.build();
+		
 		CommandLine commandLine = cliOptions.parse(args);
 
-		if (commandLine != null) {
-			boolean verbose = false;
-			
-			if (commandLine.hasOption(CliOptions.verboseArg)) {
-				verbose = true;
-			}
-			
+		if (commandLine != null) {		
 			// cmd line
 			new XBeeSketchUploader().processXBee(
 					commandLine.getOptionValue(CliOptions.sketch), 
 					commandLine.getOptionValue(serialPort), 
 					cliOptions.getIntegerOption(baudRate), 
 					commandLine.getOptionValue(xbeeAddress), 
-					verbose,
+					commandLine.hasOption(CliOptions.verboseArg),
 					cliOptions.getIntegerOption(CliOptions.ackTimeoutMillisArg),
 					cliOptions.getIntegerOption(CliOptions.arduinoTimeoutArg),
 					cliOptions.getIntegerOption(CliOptions.retriesPerPacketArg),

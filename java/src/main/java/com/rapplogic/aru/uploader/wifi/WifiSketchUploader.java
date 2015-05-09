@@ -20,10 +20,10 @@
 package com.rapplogic.aru.uploader.wifi;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketException;
 import java.text.ParseException;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -40,18 +40,29 @@ public class WifiSketchUploader extends SketchUploader {
 	// this is up for debate. esp seems to drop more packets around low forties. and fails outright around 46
 	public final int WIFI_PAGE_SIZE = 32;
 	private Socket socket = null;
-	private volatile boolean closed;
+	private volatile boolean connected;
+	
+	public final static String host = "host";
+	public final static String port = "port";
+	public final static String connectionTimeoutSecs = "socket-connection-timeout-secs";
+	public final static String readTimeoutSecs = "socket-read-timeout-secs";	
 	
 	public WifiSketchUploader() {
 		super();
 	}
 
-	public void flash(String file, String host, int port, final boolean verbose, int ackTimeoutMillis, int arduinoTimeoutSec, int retriesPerPacket, int delayBetweenRetriesMillis) throws IOException {
-		Map<String,Object> context = Maps.newHashMap();		
+	public void flash(String file, String host, int port, int connectionTimeoutSecs, int readTimeoutSecs, final boolean verbose, int ackTimeoutMillis, int arduinoTimeoutSecs, int retriesPerPacket, int delayBetweenRetriesMillis) throws IOException {
+		Map<String,Object> context = Maps.newHashMap();
+		
+		context.put("host", host);
+		context.put("port", port);
+		context.put("connectionTimeoutSecs", connectionTimeoutSecs);
+		context.put("readTimeoutSecs", readTimeoutSecs);
+		
 		// determine max data we can send with each programming packet
 		// NOTE remember to size the array on the Arduino accordingly to accomadate this size
 		int pageSize = WIFI_PAGE_SIZE - getProgramPageHeader(0, 0).length;
-		super.process(file, pageSize, ackTimeoutMillis, arduinoTimeoutSec, retriesPerPacket, delayBetweenRetriesMillis, verbose, context);
+		super.process(file, pageSize, ackTimeoutMillis, arduinoTimeoutSecs, retriesPerPacket, delayBetweenRetriesMillis, verbose, context);
 	}
 
 //	private int[] toIntArray(List<Integer> list) {
@@ -78,13 +89,24 @@ public class WifiSketchUploader extends SketchUploader {
 	@Override
 	protected void open(final Map<String, Object> context) throws Exception {
 		
+		String host = (String) context.get("host");
+		Integer port = (Integer) context.get("port");
+		Integer connectionTimeoutSecs = (Integer) context.get("connectionTimeoutSecs");
+		Integer readTimeoutSecs = (Integer) context.get("readTimeoutSecs");		
+		
 		// open socket
-		socket = new Socket("192.168.1.115", 1111);
+		socket = new Socket();
+		socket.connect(new InetSocketAddress(host, port), connectionTimeoutSecs*1000);
+		socket.setSoTimeout(readTimeoutSecs*1000);
+		
+		connected = true;
+		
 		final int[] reply = new int[5];
 		final AtomicInteger replyIndex = new AtomicInteger(0);
 
-		t = new Thread(new Runnable() {
-			
+		// TODO unlike other wireless protocols, wifi is stateful so we need to handle situations where we lose the socket and reconnect
+		
+		t = new Thread(new Runnable() {			
 			@Override
 			public void run() {
 				int ch = 0;
@@ -92,12 +114,6 @@ public class WifiSketchUploader extends SketchUploader {
 				// reply always terminated with 13,10
 				try {
 					while ((ch = socket.getInputStream().read()) > -1) {
-//						if (ch > 32 && ch < 127) {
-//							stringBuilder.append((char) ch);   
-//						} else {
-//							System.out.println("non ascii in response " + ch);
-//						}
-						
 						if (replyIndex.get() < reply.length) {
 							reply[replyIndex.getAndIncrement()] = ch;							
 						} else if (replyIndex.get() == 5 && ch == 13) {
@@ -113,10 +129,8 @@ public class WifiSketchUploader extends SketchUploader {
 							throw new RuntimeException("Expected CR/LF -- invalid reply at position " + replyIndex.get() + ", array: " + intArrayToString(reply));
 						}
 					}
-					
-					System.out.println("Input stream closing");
 				} catch (IOException e) {
-					if (closed && e instanceof SocketException) {
+					if (!connected && e instanceof SocketException) {
 						// expected.. ignore
 					} else {
 						System.out.println("IO error in socket reader");
@@ -126,21 +140,21 @@ public class WifiSketchUploader extends SketchUploader {
 					System.out.println("Unexpected error in socket reader");
 					e.printStackTrace();
 				}
+				
+				connected = false;
 			}
 		});
 		
 		t.setDaemon(true);
 		t.start();
-		
-		// esp8266 needs short delay after connecting
-//		Thread.sleep(50);
 	}
-
-	final int TX_TIMEOUT = 500;
-	int counter = 1;
+	
+	protected boolean isConnected() {
+		return connected;
+	}
 	
 	private void handleReply(int[] reply) {
-		System.out.println("Received reply " + intArrayToString(reply));
+		//System.out.println("Received reply " + intArrayToString(reply));
 		// { MAGIC_BYTE1, MAGIC_BYTE2, 0, 0, 0};
 		addReply(reply);
 	}
@@ -163,7 +177,7 @@ public class WifiSketchUploader extends SketchUploader {
 
 	@Override
 	protected void close() throws Exception {
-		closed = true;
+		connected = false;
 		// close socket
 		socket.close();
 	}
@@ -172,45 +186,61 @@ public class WifiSketchUploader extends SketchUploader {
 	protected String getName() {
 		return "wifi";
 	}
-
-	public final static String host = "host";
-	public final static String port = "port";
 	
 	private void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException {
 		CliOptions cliOptions = getCliOptions();
 	
-		cliOptions.getOptions().addOption(
+		cliOptions.addOption(
 				OptionBuilder
 				.withLongOpt(host)
 				.hasArg()
 				.isRequired(true)
 				.withDescription("Host ip address of wifi device. Required")
-				.create("p"));
+				.create("x")); // single arg is optional
 
-		cliOptions.getOptions().addOption(
+		cliOptions.addOption(
 				OptionBuilder
 				.withLongOpt(port)
 				.hasArg()
 				.isRequired(true)
 				.withType(Number.class)
 				.withDescription("Port of wifi server. Required")
-				.create("b"));
+				.create("p"));
+
+		cliOptions.getDefaults().put(connectionTimeoutSecs, "10");
+		
+		cliOptions.addOption(
+				OptionBuilder
+				.withLongOpt(connectionTimeoutSecs)
+				.hasArg()
+				.isRequired(false)
+				.withType(Number.class)
+				.withDescription("Connection timeout seconds")
+				.create("q")); // arbitrary -- running out of letters
+		
+		cliOptions.getDefaults().put(readTimeoutSecs, "10");
+		
+		cliOptions.addOption(
+				OptionBuilder
+				.withLongOpt(readTimeoutSecs)
+				.hasArg()
+				.isRequired(false)
+				.withType(Number.class)
+				.withDescription("Connection read seconds")
+				.create("v"));
+		
+		cliOptions.build();
 		
 		CommandLine commandLine = cliOptions.parse(args);
 
-		if (commandLine != null) {
-			boolean verbose = false;
-			
-			if (commandLine.hasOption(CliOptions.verboseArg)) {
-				verbose = true;
-			}
-			
-			// cmd line
+		if (commandLine != null) {						
 			new WifiSketchUploader().flash(
 					commandLine.getOptionValue(CliOptions.sketch), 
 					commandLine.getOptionValue(host), 
 					cliOptions.getIntegerOption(port), 
-					verbose,
+					cliOptions.getIntegerOption(connectionTimeoutSecs),
+					cliOptions.getIntegerOption(readTimeoutSecs),
+					commandLine.hasOption(CliOptions.verboseArg),
 					cliOptions.getIntegerOption(CliOptions.ackTimeoutMillisArg),
 					cliOptions.getIntegerOption(CliOptions.arduinoTimeoutArg),
 					cliOptions.getIntegerOption(CliOptions.retriesPerPacketArg),
@@ -218,18 +248,38 @@ public class WifiSketchUploader extends SketchUploader {
 		}
 	}
 	
-	public static void main(String[] args) throws NumberFormatException, IOException, XBeeException, ParseException, org.apache.commons.cli.ParseException {		
+	/**
+	 * ex
+ceylon:arduino-remote-uploader-1.0-SNAPSHOT andrew$ ./wifi-uploader.sh  -d --host 192.168.1.115  --port 1111 -s ../../../resources/BlinkSlow.cpp.hex 
+Sending sketch to wifi radio, size 1102 bytes, md5 8e7a58576bdc732d3f9708dab9aea5b9, number of packets 43, and 26 bytes per packet, header ef,ac,10,a,4,4e,0,2b,1a,3c
+Sending page 1 of 43, with address 0, length 32, packet ef,ac,20,20,0,0,c,94,61,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94
+Sending page 2 of 43, with address 26, length 32, packet ef,ac,20,20,0,1a,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0
+..
+Sending flash start packet ef,ac,40,6,4,4e
+Sending flash packet to radio ef,ac,40,6,4,4e
+Successfully flashed remote Arduino in 7s, with 0 retries
+
+	 * @param args
+	 * @throws NumberFormatException
+	 * @throws IOException
+	 * @throws XBeeException
+	 * @throws ParseException
+	 * @throws org.apache.commons.cli.ParseException
+	 */
+	public static void main(String[] args) throws NumberFormatException, IOException, ParseException, org.apache.commons.cli.ParseException {		
 		initLog4j();		
-//		WifiSketchUploader wifiSketchUploader = new WifiSketchUploader();
-//		wifiSketchUploader.runFromCmdLine(args);
-		new WifiSketchUploader().flash(
-				"/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex", 
-				"192.168.1.115", 
-				1111 ,
-				true,
-				3000,
-				5,
-				3,
-				0);
+		WifiSketchUploader wifiSketchUploader = new WifiSketchUploader();
+		wifiSketchUploader.runFromCmdLine(args);
+//		new WifiSketchUploader().flash(
+//				"/Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast.cpp.hex", 
+//				"192.168.1.115", 
+//				1111,
+//				10,
+//				10,
+//				true,
+//				3000,
+//				5,
+//				3,
+//				0);
 	}
 }

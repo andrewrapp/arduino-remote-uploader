@@ -35,7 +35,8 @@
 
 // Tests the ESP communication
 // this is useful to debug any issues with ESP with the serial port before throwing flashing into the mix
-#define PING_TEST true
+// TODO rename to ECHO_TEST
+#define PING_TEST false
 
 SoftwareSerial espSerial(ESP_RX, ESP_TX);
 Esp8266 esp8266 = Esp8266();
@@ -57,7 +58,7 @@ void setup() {
     //configure debug if an additional Serial port is available. Use Serial with Leonardo
     //remoteUploader.setDebugSerial(&Serial);    
     
-    // NOTE if you are using a 3.3V/8Mhz, it will probably not work at 115.2K baud so load the 5V/16Mzh optiboot bootloader so it runs at 56.7K
+    // NOTE: if you are using a 3.3V/8Mhz I highly recommend running Optiboot at 57.6K instead of 115.2K. This requires the 5V/16Mzh optiboot bootloader
     remoteUploader.setBaudRate(OPTIBOOT_8MHZ_BAUD_RATE);
   }
 

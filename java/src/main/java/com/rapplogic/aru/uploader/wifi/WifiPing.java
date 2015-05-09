@@ -171,14 +171,7 @@ public class WifiPing {
 		}
 	}
 	
-	public void sendFakePacket(byte[] message, OutputStream outputStream) throws IOException, InterruptedException {
-		// when arduino resets esp, it doesn't kill the connection so we don't get an i/o exception for a few mins
-		// TODO see if connection can be close on arduino prior to reset
-		// java.net.SocketException: Broken pipe
-		
-		// still and issue with esp8266 where if it closes the connection and restarts, we can connect and
-		// write data but it ignores it for a while
-		
+	public void sendFakePacket(byte[] message, OutputStream outputStream) throws IOException, InterruptedException {		
 		System.out.println("Sending message " + message);
 		outputStream.write(message);
 		outputStream.flush();

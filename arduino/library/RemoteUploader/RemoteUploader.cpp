@@ -69,6 +69,8 @@ TROUBLESHOOTING
 - if flashInit fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify the serial port is wired correctly and is at 115200
 - check every pin connection, reset, tx/rx (remember arduino tx goes to the other arduino rx), eeprom, power. make sure all powered devices share a common ground
 - connection issues: check your solder joints. try different breadboard positions, try different breadboard, try different Arduinos
+- if EEPROM_WRITE_ERROR, verify the eeprom is seated tight and oriented correctly. they have a tendency to popup in breadcoards
+- IF FLASH_ERROR, verify the reset pin is connected and the pin matches the #define RESET_PIN
 
 Example successful flash:
 
@@ -481,6 +483,8 @@ int RemoteUploader::flash(int startAddress, int size) {
     getDebugSerial()->println("Flashing from eeprom...");
   #endif
 
+    // TODO return descriptive errors instead of -1
+
   bounce();
           
   if (flashInit() != 0) {
@@ -794,6 +798,8 @@ int RemoteUploader::process(uint8_t packet[]) {
             #if (DEBUG)
               getDebugSerial()->println("Flash failure");
             #endif              
+
+            // can occur for a variety of reasons, including if the Arduino is not connected to the reset pin
             return FLASH_ERROR;
           }
               
