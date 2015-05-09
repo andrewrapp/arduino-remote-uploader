@@ -185,9 +185,26 @@ public class SketchCore {
     	return hex.toString();    	
     }
     
+    public String toDec(int[] data, int offset, int length) {
+    	StringBuilder dec = new StringBuilder();
+    	
+    	for (int i = offset; i < offset + length; i++) {
+    		dec.append(data[i]);
+    		if (i != data.length - 1) {
+    			dec.append(",");
+    		}
+    	}
+    	
+    	return dec.toString();    	
+    }    
+    
     public String toHex(int[] data) {
     	return toHex(data, 0, data.length);
     }
+    
+    public String toDec(int[] data) {
+    	return toDec(data, 0, data.length);
+    }    
 
 	public Sketch parseSketchFromIntelHex(String fileName, int pageSize) throws IOException {	
 		

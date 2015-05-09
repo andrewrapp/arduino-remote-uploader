@@ -95,6 +95,7 @@ RemoteUploader::RemoteUploader() {
   long lastUpdateAtMillis = 0;
   int currentEEPROMAddress = EEPROM_OFFSET_ADDRESS;
   int maxEEPROMAddress = currentEEPROMAddress;
+  long baudRate = OPTIBOOT_BAUD_RATE;
 }
 
 bool RemoteUploader::inProgrammingMode() {
@@ -595,6 +596,10 @@ uint16_t RemoteUploader::getPacketId(uint8_t packet[]) {
   return (packet[4] << 8) + packet[5];
 }
 
+void RemoteUploader::setBaudRate(long _baudRate) {
+  baudRate = _baudRate;
+}
+
 // process packet and return reply code for host
 // every request is idempotent
 int RemoteUploader::process(uint8_t packet[]) {
@@ -783,7 +788,7 @@ int RemoteUploader::process(uint8_t packet[]) {
           }         
 
           // set to optiboot speed
-          getProgrammerSerial()->begin(OPTIBOOT_BAUD_RATE);
+          getProgrammerSerial()->begin(baudRate);
   
           if (flash(EEPROM_OFFSET_ADDRESS, programSize) != 0) {
             #if (DEBUG)

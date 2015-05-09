@@ -42,8 +42,8 @@ public abstract class SketchUploader extends SketchCore {
 	
 	final Logger log = Logger.getLogger(SketchUploader.class);
 	
-	public final int MAGIC_BYTE1 = 0xef;
-	public final int MAGIC_BYTE2 = 0xac;
+	public final int MAGIC_BYTE1 = 0xef; // 239
+	public final int MAGIC_BYTE2 = 0xac; // 172
 	// make enum
 	public final int CONTROL_PROG_REQUEST = 0x10;
 	public final int CONTROL_WRITE_EEPROM = 0x20;
@@ -234,7 +234,7 @@ public abstract class SketchUploader extends SketchCore {
 		// page size is max packet size for the radio
 		final Sketch sketch = parseSketchFromIntelHex(file, pageSize);
 			
-		// was trying to keep in stateless but this is needed for the rxtx async input
+		// was trying to keep in state-less but this is needed for the rxtx async input
 		this.verbose = verbose;
 		
 		context.put("verbose", verbose);

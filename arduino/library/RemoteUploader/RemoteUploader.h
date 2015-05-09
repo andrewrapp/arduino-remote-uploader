@@ -43,8 +43,10 @@
 
 // The remaining config should be fine for vast majority of cases
 
-// Don't change! only 115200 works with optiboot
+// Default optiboot speed for 5V Arduinos
 #define OPTIBOOT_BAUD_RATE 115200
+ // Optiboot speed for 3.3V/8Mhz Arduinos
+#define OPTIBOOT_8MHZ_BAUD_RATE 57600
 // how long to wait for a reply from optiboot before timeout (ms)
 #define OPTIBOOT_READ_TIMEOUT 1000
 
@@ -125,6 +127,8 @@ public:
 	bool isFlashPacket(uint8_t packet[]);
 	HardwareSerial* getProgrammerSerial();	
 	uint16_t getPacketId(uint8_t packet[]);
+	// optiboot typically runs at 115.2 but can run lower so only needs to be set if not 115.2K
+	void setBaudRate(long baudRate);
 	// can only use DEBUG with Leonardo or other variant that supports multiple serial ports
 	#if (DEBUG)
 	  Stream* getDebugSerial();
@@ -162,6 +166,7 @@ private:
 	uint8_t bytesPerPacket;
 	long programmingTimeout;
 	bool flashed;
+	long baudRate;
 };
 
 #endif // guard

@@ -179,7 +179,7 @@ public class WifiPing {
 		// still and issue with esp8266 where if it closes the connection and restarts, we can connect and
 		// write data but it ignores it for a while
 		
-//		System.out.println("Sending message " + message);
+		System.out.println("Sending message " + message);
 		outputStream.write(message);
 		outputStream.flush();
 	}
