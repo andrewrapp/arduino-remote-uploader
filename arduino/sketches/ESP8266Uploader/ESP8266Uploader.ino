@@ -34,9 +34,8 @@
 #define RESET_PIN 9
 
 // Tests the ESP communication
-// this is useful to debug any issues with ESP with the serial port before throwing flashing into the mix
-// TODO rename to ECHO_TEST
-#define PING_TEST false
+// This is useful to debug any issues with ESP using the serial port before throwing flashing into the mix
+#define COMMUNICATION_TEST false
 
 SoftwareSerial espSerial(ESP_RX, ESP_TX);
 Esp8266 esp8266 = Esp8266();
@@ -51,7 +50,7 @@ RemoteUploader remoteUploader = RemoteUploader();
 extEEPROM eeprom = extEEPROM(kbits_256, 1, 64);
 
 void setup() {
-  if (PING_TEST == false) {
+  if (COMMUNICATION_TEST == false) {
     // for Leonardo use &Serial1
     // for atmega328/168 use &Serial
     remoteUploader.setup(&Serial, &eeprom, RESET_PIN);    
@@ -70,7 +69,7 @@ void setup() {
   Serial.begin(9600); while(!Serial); // UART serial debug
   
   // we can only use the Serial for debug when testing esp
-  if (PING_TEST) {
+  if (COMMUNICATION_TEST) {
     esp8266.setDebugSerial(&Serial);    
   }
   
@@ -79,7 +78,7 @@ void setup() {
 
   // only the first time do you need to connect to the AP. this is retained by esp8266
 //  if (esp8266.configure("ssid","password") != SUCCESS) {
-//    if (PING_TEST) {
+//    if (COMMUNICATION_TEST) {
 //      Serial.println("Configure failed");
 //    }
 //    
@@ -87,7 +86,7 @@ void setup() {
 //  }
 
   while (!esp8266.configureServer(serverPort)) {
-      if (PING_TEST) {
+      if (COMMUNICATION_TEST) {
         Serial.println("Failed to configure server");
       }
       delay(3000);
@@ -104,7 +103,7 @@ int sendReply(uint8_t status, uint16_t id) {
     
   // send reply
   if (esp8266.send(esp8266.getChannel(), replyPayload, REPLY_SIZE) != SUCCESS) {
-    if (PING_TEST) {
+    if (COMMUNICATION_TEST) {
       Serial.println("Failed to send reply");
     }
   }
@@ -114,7 +113,7 @@ void handleProgramming() {
   // send the packet array, length to be processed
   int response;
   
-  if (PING_TEST) {
+  if (COMMUNICATION_TEST) {
     // send back a success
     response = OK;
   } else {
@@ -152,7 +151,7 @@ void loop() {
         }
     } 
   } else if (esp8266.isError()) {
-    if (PING_TEST) {
+    if (COMMUNICATION_TEST) {
       Serial.print("Failed on command ");
       Serial.print(esp8266.getLastCommand());
       Serial.print(" with error ");
@@ -162,7 +161,7 @@ void loop() {
     } 
     
     if (esp8266.getLastCommand() == UNKNOWN_COMMAND) {
-      if (PING_TEST) {
+      if (COMMUNICATION_TEST) {
         Serial.print("Resetting");
       }
       
