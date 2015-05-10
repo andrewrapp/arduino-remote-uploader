@@ -36,6 +36,10 @@ import com.rapplogic.xbee.api.XBeeAddress64;
 import com.rapplogic.xbee.api.XBeeException;
 import com.rapplogic.xbee.api.XBeeResponse;
 import com.rapplogic.xbee.api.XBeeTimeoutException;
+import com.rapplogic.xbee.api.wpan.RxResponse;
+import com.rapplogic.xbee.api.wpan.RxResponse64;
+import com.rapplogic.xbee.api.wpan.TxRequest64;
+import com.rapplogic.xbee.api.wpan.TxStatusResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetRxResponse;
 import com.rapplogic.xbee.api.zigbee.ZNetTxRequest;
 import com.rapplogic.xbee.api.zigbee.ZNetTxStatusResponse;
@@ -61,15 +65,24 @@ public class XBeeSketchUploader extends SketchUploader {
 
 	private final XBee xbee = new XBee();
 	
+	public enum Series { SERIES1, SERIES2 };
+	
 	public XBeeSketchUploader() {
 		super();
 	}
 
-	public void processXBee(String file, String device, int speed, String xbeeAddress, final boolean verbose, int ackTimeoutMillis, int arduinoTimeoutSec, int retriesPerPacket, int delayBetweenRetriesMillis) throws IOException {
+	public void flash(String file, String radioType, String device, int speed, String xbeeAddress, final boolean verbose, int ackTimeoutMillis, int arduinoTimeoutSec, int retriesPerPacket, int delayBetweenRetriesMillis) throws IOException {
 		Map<String,Object> context = Maps.newHashMap();
 		context.put("device", device);
 		context.put("speed", speed);
-		XBeeAddress64 xBeeAddress64 = new XBeeAddress64(xbeeAddress);
+		XBeeAddress64 xBeeAddress64 = null;
+		
+		try {
+			xBeeAddress64 = new XBeeAddress64(xbeeAddress);
+		} catch (Exception e) {
+			throw new RuntimeException("Invalid xbee 64-bit address " + xbeeAddress);
+		}
+		
 		context.put("xbeeAddress", xBeeAddress64);
 		
 		super.process(file, XBEE_PAGE_SIZE, ackTimeoutMillis, arduinoTimeoutSec, retriesPerPacket, delayBetweenRetriesMillis, verbose, context);
@@ -78,29 +91,48 @@ public class XBeeSketchUploader extends SketchUploader {
 	@Override
 	protected void open(final Map<String, Object> context) throws Exception {
 		xbee.open((String) context.get("device"), (Integer) context.get("speed"));
+
+		final boolean verbose = (Boolean) context.get("verbose");
 		
 		xbee.addPacketListener(new PacketListener() {
 			@Override
-			public void processResponse(XBeeResponse response) {					
-				if (response.getApiId() == ApiId.ZNET_RX_RESPONSE) {
-					
-					boolean verbose = (Boolean) context.get("verbose");
-					
+			public void processResponse(XBeeResponse response) {
+				if (response.getApiId() == ApiId.ZNET_RX_RESPONSE || response.getApiId() == ApiId.RX_64_RESPONSE) {	
 					if (verbose) {
 						System.out.println("Received rx packet from arduino " + response);							
 					}
 
-					ZNetRxResponse zb = (ZNetRxResponse) response;
-					
-					if (zb.getData()[0] == MAGIC_BYTE1 && zb.getData()[1] == MAGIC_BYTE2) {
-						addReply(zb.getData());
+					if (response.getApiId() == ApiId.ZNET_RX_RESPONSE) {
+						ZNetRxResponse zb = (ZNetRxResponse) response;
+						
+						if (zb.getData()[0] == MAGIC_BYTE1 && zb.getData()[1] == MAGIC_BYTE2) {
+							addReply(zb.getData());
+						} else {
+							System.out.println("Ignoring non-programming packet " + zb);
+						}						
 					} else {
-						System.out.println("Ignoring non-programming packet " + zb);
+						RxResponse rx64 = (RxResponse64) response;
+						
+						if (rx64.getData()[0] == MAGIC_BYTE1 && rx64.getData()[1] == MAGIC_BYTE2) {
+							addReply(rx64.getData());
+						} else {
+							System.out.println("Ignoring non-programming packet " + rx64);
+						}							
 					}
 				} else if (response.getApiId() == ApiId.ZNET_TX_STATUS_RESPONSE) {
 					ZNetTxStatusResponse zNetTxStatusResponse = (ZNetTxStatusResponse) response;
 					
 					if (zNetTxStatusResponse.isSuccess()) {
+						// yay					
+					} else {
+						// interrupt thread in case it's waiting for ack, which will never come
+						System.out.println("Failed to deliver packet. Interrupting main thread. Response: " + response);
+						interrupt();
+					}
+				} else if (response.getApiId() == ApiId.TX_STATUS_RESPONSE) {
+					TxStatusResponse txStatusResponse = (TxStatusResponse) response;
+					
+					if (txStatusResponse.isSuccess()) {
 						// yay					
 					} else {
 						// interrupt thread in case it's waiting for ack, which will never come
@@ -117,12 +149,18 @@ public class XBeeSketchUploader extends SketchUploader {
 	
 	@Override
 	protected void writeData(int[] data, Map<String,Object> context) throws Exception {
+		Series series = (Series) context.get("series");
 		XBeeAddress64 address = (XBeeAddress64) context.get("xbeeAddress");
-		//xbee.sendAsynchronous(new ZNetTxRequest(address, data));
+
 		
 		try {
 			// TODO make configurable timeout
-			xbee.sendSynchronous(new ZNetTxRequest(address, data), TX_TIMEOUT);			
+			if (series == Series.SERIES1) {
+				xbee.sendSynchronous(new TxRequest64(address, data), TX_TIMEOUT);
+			} else {
+				//xbee.sendAsynchronous(new ZNetTxRequest(address, data));
+				xbee.sendSynchronous(new ZNetTxRequest(address, data), TX_TIMEOUT);				
+			}
 		} catch (XBeeTimeoutException e) {
 			// TODO interrupt ack thread
 			// the ack will timeout so no need to do anything with this error
@@ -140,13 +178,22 @@ public class XBeeSketchUploader extends SketchUploader {
 		return "xbee";
 	}
 
+	public final static String radioType = "radio-type";
 	public final static String serialPort = "serial-port";
 	public final static String baudRate = "baud-rate";
 	public final String xbeeAddress = "remote-xbee-address";
 	
 	private void runFromCmdLine(String[] args) throws org.apache.commons.cli.ParseException, IOException {
 		CliOptions cliOptions = getCliOptions();
-	
+
+		cliOptions.addOption(
+				OptionBuilder
+				.withLongOpt(radioType)
+				.hasArg()
+				.isRequired(true)
+				.withDescription("XBee radio series: must be either series1 or series2. Required")
+				.create("i"));
+		
 		cliOptions.addOption(
 				OptionBuilder
 				.withLongOpt(serialPort)
@@ -176,10 +223,20 @@ public class XBeeSketchUploader extends SketchUploader {
 		
 		CommandLine commandLine = cliOptions.parse(args);
 
-		if (commandLine != null) {		
+		if (commandLine != null) {
+			
+			// validate
+			try {
+				Series series = Series.valueOf(commandLine.getOptionValue(radioType).toUpperCase());				
+			} catch (Exception e) {
+				System.err.println(radioType + " must be series1 or series2");
+				return;
+			}
+					
 			// cmd line
-			new XBeeSketchUploader().processXBee(
-					commandLine.getOptionValue(CliOptions.sketch), 
+			new XBeeSketchUploader().flash(
+					commandLine.getOptionValue(CliOptions.sketch),
+					commandLine.getOptionValue(radioType),
 					commandLine.getOptionValue(serialPort), 
 					cliOptions.getIntegerOption(baudRate), 
 					commandLine.getOptionValue(xbeeAddress), 

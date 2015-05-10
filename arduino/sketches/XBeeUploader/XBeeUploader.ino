@@ -27,10 +27,12 @@
 
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and and a Diecimila
 
-// TODO support XBee series1
-// should we proxy serial rx/tx to softserial (xbee). if you want to use the XBee from the application arduino set to true -- if only using xbee for programming set to false
+// Set to true to forward serial (xbee traffic) to other Arduino
 #define PROXY_SERIAL true
 #define XBEE_BAUD_RATE 9600
+
+#define SERIES1 1
+#define SERIES2 2
 
 // TODO send with start header
 #define ACK_TIMEOUT 1000
@@ -46,15 +48,26 @@ const uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
 
 XBee xbee = XBee();
 XBeeResponse response = XBeeResponse();
-ZBRxResponse rx = ZBRxResponse();
+// series 1 rx objects
+Rx64Response rx1 = Rx64Response();
+// series 2
+ZBRxResponse rx2 = ZBRxResponse();
 
 // format magic bytes, status, id1, id2
 uint8_t xbeeTxPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0, 0, 0 };
 
 // Coordinator/XMPP Gateway
 XBeeAddress64 addr64 = XBeeAddress64(COORD_MSB_ADDRESS, COORD_LSB_ADDRESS);
-ZBTxRequest tx = ZBTxRequest(addr64, xbeeTxPayload, sizeof(xbeeTxPayload));
-ZBTxStatusResponse txStatus = ZBTxStatusResponse();
+// series 1
+Tx64Request tx1 = Tx64Request(addr64, xbeeTxPayload, sizeof(xbeeTxPayload));
+// series 2
+ZBTxRequest tx2 = ZBTxRequest(addr64, xbeeTxPayload, sizeof(xbeeTxPayload));
+
+// status response
+// series 1
+TxStatusResponse txStatus1 = TxStatusResponse();
+// series 2
+ZBTxStatusResponse txStatus2 = ZBTxStatusResponse();
 
 //Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
@@ -63,6 +76,9 @@ SoftwareSerial nss(XBEE_SOFTSERIAL_TX_PIN, XBEE_SOFTSERIAL_RX_PIN);
 RemoteUploader remoteUploader = RemoteUploader();
 
 extEEPROM eeprom = extEEPROM(kbits_256, 1, 64);
+
+// keep track radio type: series 1 or 2
+uint8_t series = 0;
 
 Stream* getXBeeSerial() {
   return &nss;  
@@ -113,24 +129,39 @@ int sendReply(uint8_t status, uint16_t id) {
   xbeeTxPayload[4] = id & 0xff;
   
   // TODO send with magic packet host can differentiate between relayed packets and programming ACKS
-  xbee.send(tx);
+  if (series == SERIES1) {
+    xbee.send(tx1);        
+  } else if (series == SERIES2) {
+    xbee.send(tx2);    
+  }
   
   // after send a tx request, we expect a status response
   // wait up to half second for the status response
   if (xbee.readPacket(ACK_TIMEOUT)) {    
     if (xbee.getResponse().getApiId() == ZB_TX_STATUS_RESPONSE) {
-      xbee.getResponse().getZBTxStatusResponse(txStatus);
+      // series 2
+      xbee.getResponse().getZBTxStatusResponse(txStatus2);
 
       // get the delivery status, the fifth byte
-      if (txStatus.isSuccess()) {
-        // good
+      if (txStatus2.isSuccess()) {
         return 0;
       } else {
         #if (USBDEBUG || NSSDEBUG) 
           getDebugSerial()->println("TX fail");
         #endif  
       }
-    }      
+    } else if (xbee.getResponse().getApiId() == TX_STATUS_RESPONSE) {
+      // series 1
+      xbee.getResponse().getTxStatusResponse(txStatus1);
+        
+      if (txStatus1.getStatus() == SUCCESS) {
+        return 0;
+      } else {
+        #if (USBDEBUG || NSSDEBUG) 
+          getDebugSerial()->println("TX fail");
+        #endif      
+      }  
+    }   
   } else if (xbee.getResponse().isError()) {
     #if (USBDEBUG || NSSDEBUG)
       // starting to see lots of these. check wire connections are secure
@@ -191,14 +222,32 @@ void loop() {
     // if not programming packet, relay exact bytes to the arduino. need to figure out how to get from library
     // NOTE the target sketch should ignore any programming packets it receives as that is an indication of a failed programming attempt
     
-      if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE) {      
+      uint8_t *packet = NULL;
+      uint8_t length;
+      
+      if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE) {  
+        // series 2    
+        series = SERIES2;
         // now fill our zb rx class
-        xbee.getResponse().getZBRxResponse(rx);
+        xbee.getResponse().getZBRxResponse(rx2);
         
         // pointer of data position in response
-        uint8_t *packet = xbee.getResponse().getFrameData() + rx.getDataOffset();
-        
-        if (rx.getDataLength() > 4 && remoteUploader.isProgrammingPacket(packet, rx.getDataLength())) {
+        uint8_t *packet = xbee.getResponse().getFrameData() + rx2.getDataOffset();
+        length = rx2.getDataLength();
+      } else if (xbee.getResponse().getApiId() == RX_64_RESPONSE) {
+        // series 1
+        series = SERIES1;        
+        xbee.getResponse().getRx64Response(rx1);      
+
+        // pointer of data position in response
+        uint8_t *packet = xbee.getResponse().getFrameData() + rx1.getDataOffset();        
+        length = rx1.getDataLength();
+      } else {
+        // unexpected packet.. ignore
+      }
+
+      if (packet != NULL) {
+        if (length > 4 && remoteUploader.isProgrammingPacket(packet, length)) {
           // send the packet array, length to be processed
           int response = remoteUploader.process(packet);
           
@@ -220,7 +269,7 @@ void loop() {
           if (PROXY_SERIAL) {
             forwardPacket();                  
           }          
-        }
+        }      
       }
   } else if (xbee.getResponse().isError()) {
     #if (USBDEBUG || NSSDEBUG) 

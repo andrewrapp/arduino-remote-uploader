@@ -131,7 +131,7 @@ public class NordicSketchUploader extends SerialSketchUploader {
 	
 	// TODO send nordic address
 	
-	public void processNordic(String file, String device, int speed, boolean verbose, int ackTimeout, int arduinoTimeout, int retriesPerPacket, int delayBetweenRetriesMillis) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
+	public void flash(String file, String device, int speed, boolean verbose, int ackTimeout, int arduinoTimeout, int retriesPerPacket, int delayBetweenRetriesMillis) throws IOException, PortInUseException, UnsupportedCommOperationException, TooManyListenersException, StartOverException {
 		Map<String,Object> context = Maps.newHashMap();
 		context.put("device", device);
 		context.put("speed", speed);
@@ -182,7 +182,7 @@ public class NordicSketchUploader extends SerialSketchUploader {
 		CommandLine commandLine = cliOptions.parse(args);
 
 		if (commandLine != null) {
-			new NordicSketchUploader().processNordic(
+			new NordicSketchUploader().flash(
 					commandLine.getOptionValue(CliOptions.sketch), 
 					commandLine.getOptionValue(serialPort), 
 					cliOptions.getIntegerOption(baudRate), 
