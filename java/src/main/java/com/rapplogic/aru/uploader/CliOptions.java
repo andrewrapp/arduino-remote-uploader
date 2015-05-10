@@ -40,7 +40,7 @@ public class CliOptions {
 	public final static String sketch = "sketch";
 	public final static String verboseArg = "verbose";
 	public final static String ackTimeoutMillisArg = "ack-timeout-ms";
-	public final static String arduinoTimeoutArg = "arduino-timeout";
+	public final static String arduinoTimeoutArg = "arduino-timeout-s";
 	public final static String retriesPerPacketArg = "retries";
 	public final static String delayBetweenRetriesMillisArg = "retry-delay-ms";
 	// TODO total timeout
@@ -85,7 +85,7 @@ public class CliOptions {
 				.hasArg()
 				.withType(Number.class)
 				.isRequired(false)
-				.withDescription("How long Arduino waits for a command before it exits programming mode (in seconds). Default is " + defaults.get(arduinoTimeoutArg) + ". Note: This is not the time that programming must complete in, only the max time between commands")
+				.withDescription("How long Arduino waits between commands before it exits programming mode (in seconds). Default is " + defaults.get(arduinoTimeoutArg) + ". Note: This is not the time that programming must complete in, only the max time between commands")
 				.create("a"));
 		
 		defaults.put(retriesPerPacketArg, "10");

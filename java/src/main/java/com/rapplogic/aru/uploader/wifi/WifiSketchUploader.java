@@ -44,8 +44,8 @@ public class WifiSketchUploader extends SketchUploader {
 	
 	public final static String host = "host";
 	public final static String port = "port";
-	public final static String connectionTimeoutSecs = "socket-connection-timeout-secs";
-	public final static String readTimeoutSecs = "socket-read-timeout-secs";	
+	public final static String connectionTimeoutSecs = "socket-connection-timeout-s";
+	public final static String readTimeoutSecs = "socket-read-timeout-s";	
 	
 	public WifiSketchUploader() {
 		super();

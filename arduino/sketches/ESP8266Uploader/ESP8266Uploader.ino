@@ -33,6 +33,9 @@
 #define REPLY_SIZE 5
 #define RESET_PIN 9
 
+// FIXME client is getting socket timeouts. add ping method to restart if loses ip address
+// TODO proxy when not in programming mode
+
 // Tests the ESP communication
 // This is useful to debug any issues with ESP using the serial port before throwing flashing into the mix
 #define COMMUNICATION_TEST false

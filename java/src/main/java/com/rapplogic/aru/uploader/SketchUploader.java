@@ -323,14 +323,10 @@ public abstract class SketchUploader extends SketchCore {
 				System.out.println("");
 			}
 
-			if (verbose) {
-				System.out.println("Sending flash start packet " + toHex(getFlashStartHeader(sketch.getSize())));
-			}
-
 			final int[] flash = getFlashStartHeader(sketch.getSize());
 			
 			if (verbose) {
-				System.out.println("Sending flash packet to radio " + toHex(flash));				
+				System.out.println("Sending flash packet " + toHex(flash));				
 			}
 			
 			Retryer last = new Retryer(retriesPerPacket, delayBetweenRetriesMillis, "flash start") {
