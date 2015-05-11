@@ -66,7 +66,7 @@ Also you'll need to press the reset button if you don't have CTS connected (for 
 Leonardo is more flexible since upload occurs over usb-serial
 
 TROUBLESHOOTING
-- if flashInit fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target. Also verify the serial port is wired correctly and is at 115200
+- if flashInit fails with 0,0,0 response, bad news you are not talking to the bootloader, verify the resetPin is connected to Reset on the target and is using pin defined by #define RESET_PIN. Also verify the serial port is wired correctly and is at 115200
 - check every pin connection, reset, tx/rx (remember arduino tx goes to the other arduino rx), eeprom, power. make sure all powered devices share a common ground
 - connection issues: check your solder joints. try different breadboard positions, try different breadboard, try different Arduinos
 - if EEPROM_WRITE_ERROR, verify the eeprom is seated tight and oriented correctly. they have a tendency to popup in breadcoards
@@ -88,16 +88,16 @@ Flashed in 1571ms
 
 RemoteUploader::RemoteUploader() {
   // defaults//zero state
-  uint8_t resetPin = 9;
-  int packetCount = 0;
-  int numPackets = 0;
-  int programSize = 0;
-  bool inProgramming = false;
-  long programmingStartMillis = 0;
-  long lastUpdateAtMillis = 0;
-  int currentEEPROMAddress = EEPROM_OFFSET_ADDRESS;
-  int maxEEPROMAddress = currentEEPROMAddress;
-  long baudRate = OPTIBOOT_BAUD_RATE;
+  resetPin = 9;
+  packetCount = 0;
+  numPackets = 0;
+  programSize = 0;
+  inProgramming = false;
+  programmingStartMillis = 0;
+  lastUpdateAtMillis = 0;
+  currentEEPROMAddress = EEPROM_OFFSET_ADDRESS;
+  maxEEPROMAddress = currentEEPROMAddress;
+  baudRate = OPTIBOOT_BAUD_RATE;
 }
 
 bool RemoteUploader::inProgrammingMode() {
@@ -288,7 +288,13 @@ int RemoteUploader::flashInit() {
     
     if (dataLen == -1) {
      // seems that we're not talking to the bootloader
-     // TODO NOBOOTLOADER_ERROR
+     // TODO NOBOOTLOADER_COMM_ERROR
+      #if (DEBUG)
+        // occurs if the reset pin is not connected
+        // OR
+        // serial port is not connected or at correct baud rate for optiboot
+        getDebugSerial()->println("Optiboot comm fail");
+      #endif      
      return -1;   
     }
     
@@ -489,7 +495,7 @@ int RemoteUploader::flash(int startAddress, int size) {
           
   if (flashInit() != 0) {
     #if (DEBUG) 
-      getDebugSerial()->println("Check failed!");
+      getDebugSerial()->println("Flash init failed!");
     #endif
     reset();
     return -1;
