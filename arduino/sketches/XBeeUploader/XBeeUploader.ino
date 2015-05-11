@@ -232,7 +232,7 @@ void loop() {
         xbee.getResponse().getZBRxResponse(rx2);
         
         // pointer of data position in response
-        uint8_t *packet = xbee.getResponse().getFrameData() + rx2.getDataOffset();
+        packet = xbee.getResponse().getFrameData() + rx2.getDataOffset();
         length = rx2.getDataLength();
       } else if (xbee.getResponse().getApiId() == RX_64_RESPONSE) {
         // series 1
@@ -240,7 +240,7 @@ void loop() {
         xbee.getResponse().getRx64Response(rx1);      
 
         // pointer of data position in response
-        uint8_t *packet = xbee.getResponse().getFrameData() + rx1.getDataOffset();        
+        packet = xbee.getResponse().getFrameData() + rx1.getDataOffset();        
         length = rx1.getDataLength();
       } else {
         // unexpected packet.. ignore
