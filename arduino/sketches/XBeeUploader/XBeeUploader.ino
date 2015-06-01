@@ -28,7 +28,7 @@
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and and a Diecimila
 
 // Set to true to forward serial (xbee traffic) to other Arduino
-#define PROXY_SERIAL true
+#define PROXY_SERIAL false
 #define XBEE_BAUD_RATE 9600
 
 #define SERIES1 1
@@ -89,8 +89,10 @@ void setup() {
   // for atmega328/168 use &Serial
   remoteUploader.setup(&Serial, &eeprom, RESET_PIN);
   //configure debug if an additional Serial port is available. Use Serial with Leonardo
-  //remoteUploader.setDebugSerial(&Serial);  
-  
+  // for some reason I can only program with a Leonardo when the serial console is open, even if I'm not using debug!
+  //Serial.begin(9600);    
+  //remoteUploader.setDebugSerial(&Serial);
+
   // TODO if setup_success != OK send error programming attempt
   // we only have one Serial port (UART) so need nss for XBee
   
@@ -105,7 +107,7 @@ void setup() {
     if (setup == 0) {
       getDebugSerial()->println("Ready");
     }
-  #endif    
+  #endif
 }
 
 // TODO move to library.. tell library of the proxySerial port
@@ -250,12 +252,12 @@ void loop() {
         if (length > 4 && remoteUploader.isProgrammingPacket(packet, length)) {
           // send the packet array, length to be processed
           int response = remoteUploader.process(packet);
-          
+              
           // do reset in library
           if (response != OK) {
             remoteUploader.reset();
           }
- 
+
           sendReply(response, remoteUploader.getPacketId(packet));          
           
           if (remoteUploader.isFlashPacket(packet)) {

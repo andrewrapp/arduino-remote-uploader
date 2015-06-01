@@ -249,7 +249,7 @@ int RemoteUploader::sendToOptiboot(uint8_t command, uint8_t *arr, uint8_t len, u
 
   if (readBuffer[0] != STK_INSYNC) {
     #if (DEBUG)
-      getDebugSerial()->print("No STK_INSYNC"); //getDebugSerial()->println(readBuffer[0], HEX);
+      getDebugSerial()->println("No STK_INSYNC"); //getDebugSerial()->println(readBuffer[0], HEX);
     #endif
 
     return -1;
@@ -472,11 +472,15 @@ void RemoteUploader::bounce() {
       getDebugSerial()->println("Bouncing the Arduino");
     #endif      
  
+    pinMode(resetPin, OUTPUT);
+
     // set reset pin low
     digitalWrite(resetPin, LOW);
     delay(200);
     digitalWrite(resetPin, HIGH);
     delay(300);
+
+    pinMode(resetPin, INPUT);
 }
 
 // returns 0 on success, < 0 on error
@@ -831,7 +835,7 @@ int RemoteUploader::setup(HardwareSerial* _serial, extEEPROM* _eeprom, uint8_t _
   eeprom = _eeprom;
   progammerSerial = _serial;
   resetPin = _resetPin;      
-  pinMode(resetPin, OUTPUT);
+  //pinMode(resetPin, OUTPUT);
 
   if (eeprom->begin(twiClock400kHz) != 0) {
     #if (DEBUG) 
