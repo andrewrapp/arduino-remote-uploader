@@ -41,6 +41,9 @@
 // Must also enable a DEBUG when using this. With atmega328/168 you would need to use SoftSerial
 #define VERBOSE false
 
+// indicates compatibility with host program
+#define VERSION 1
+
 // The remaining config should be fine for vast majority of cases
 
 // Default optiboot speed for 5V Arduinos
@@ -100,6 +103,7 @@
 #define NOBOOTLOADER_ERROR 8
 #define VERIFY_PAGE_ERROR 9
 #define ADDRESS_SKIP_ERROR 0xa
+#define WRONG_VERSION_ERROR 0xb
 
 // STK CONSTANTS
 #define STK_OK              0x10

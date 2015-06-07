@@ -644,6 +644,11 @@ int RemoteUploader::process(uint8_t packet[]) {
             getDebugSerial()->println("Received start packet");
           #endif  
           
+          if (packet[] != VERSION) {
+            // TODO send the version number
+            return WRONG_VERSION_ERROR;
+          }
+
           if (inProgramming) {
             // ok. we'll reset
           }

@@ -49,8 +49,13 @@ public abstract class SketchUploader extends SketchCore {
 	public final int CONTROL_WRITE_EEPROM = 0x20;
 	// somewhat redundant
 	public final int CONTROL_START_FLASH = 0x40;
+	// tell what version of uploader is running
+	public final int CONTROL_VERSION_QUERY = 0x80;
+
+	// releases with non-backwards compatible change to protocol should rev the version number 
+	public final int VERSION = 1;
 	
-	// repsonse/error codes must sync the arduino header file
+	// response/error codes must sync the arduino header file
 	public final int OK = 1;
 	public final int START_OVER = 2;
 	public final int TIMEOUT = 3;
@@ -175,19 +180,24 @@ public abstract class SketchUploader extends SketchCore {
 		throw new NoAckException("No ACK from transport device after " + ackTimeoutMillis + "ms");		
 	}
 	
-	public int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage, int timeout) {
-		return new int[] { 
+	public int[] getStartHeader(int sizeInBytes, int numPages, int bytesPerPage, int timeout, int version) {
+		int[] header =  new int[] { 
 				MAGIC_BYTE1, 
 				MAGIC_BYTE2, 
 				CONTROL_PROG_REQUEST, 
-				10, //length of this header
+				-1, //length set below
 				(sizeInBytes >> 8) & 0xff, 
 				sizeInBytes & 0xff, 
 				(numPages >> 8) & 0xff, 
 				numPages & 0xff,
 				bytesPerPage,
-				timeout & 0xff				
+				timeout & 0xff,
+				version
 		};
+		
+		header[3] = header.length;
+		
+		return header;
 	}
 	
 	// TODO consider adding retry bit to header
@@ -196,14 +206,18 @@ public abstract class SketchUploader extends SketchCore {
 	// NOTE if header size is ever changed must also change PROG_DATA_OFFSET in library
 	// xbee has error detection built-in but other protocols may need a checksum
 	private int[] getHeader(int controlByte, int addressOrSize, int dataLength) {
-		return new int[] {
+		int[] header = new int[] {
 				MAGIC_BYTE1, 
 				MAGIC_BYTE2, 
 				controlByte, 
-				dataLength + 6, //length + 6 bytes for header
+				-1, //set below
 				(addressOrSize >> 8) & 0xff, 
 				addressOrSize & 0xff
 		};
+		
+		header[3] = dataLength + header.length;
+		
+		return header;
 	}
 
 	protected int getPacketId(int[] reply) {
