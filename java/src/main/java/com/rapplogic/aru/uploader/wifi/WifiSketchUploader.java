@@ -250,7 +250,7 @@ public class WifiSketchUploader extends SketchUploader {
 	
 	/**
 	 * ex
-ceylon:arduino-remote-uploader-1.0-SNAPSHOT andrew$ ./wifi-uploader.sh  -d --host 192.168.1.115  --port 1111 -s ../../../resources/BlinkSlow.cpp.hex 
+ceylon:arduino-remote-uploader-1.0-SNAPSHOT andrew$ ./wifi-uploader.sh --host 192.168.1.115  --port 1111 -s ../../../resources/BlinkSlow.cpp.hex 
 Sending sketch to wifi radio, size 1102 bytes, md5 8e7a58576bdc732d3f9708dab9aea5b9, number of packets 43, and 26 bytes per packet, header ef,ac,10,a,4,4e,0,2b,1a,3c
 Sending page 1 of 43, with address 0, length 32, packet ef,ac,20,20,0,0,c,94,61,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94
 Sending page 2 of 43, with address 26, length 32, packet ef,ac,20,20,0,1a,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0,c,94,7e,0
