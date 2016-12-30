@@ -28,8 +28,9 @@
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and and a Diecimila
 
 // Set to true to forward serial (xbee traffic) to other Arduino
-#define PROXY_SERIAL false
+#define PROXY_SERIAL true
 #define XBEE_BAUD_RATE 9600
+#define USBDEBUG false
 
 #define SERIES1 1
 #define SERIES2 2
@@ -38,13 +39,13 @@
 #define ACK_TIMEOUT 1000
 
 // these can be swapped to any other free digital pins
-#define XBEE_SOFTSERIAL_TX_PIN 8
 #define XBEE_SOFTSERIAL_RX_PIN 7
+#define XBEE_SOFTSERIAL_TX_PIN 8
 #define RESET_PIN 9
 
-// Specify the XBee coordinator address to send ACKs SH + SL
-const uint32_t COORD_MSB_ADDRESS = 0x0013a200;
-const uint32_t COORD_LSB_ADDRESS = 0x408b98fe;
+// set a dummy address. all tx will be sent to the sender via getRemoteAddress
+const uint32_t COORD_MSB_ADDRESS = 0;
+const uint32_t COORD_LSB_ADDRESS = 0;
 
 XBee xbee = XBee();
 XBeeResponse response = XBeeResponse();
@@ -56,7 +57,9 @@ ZBRxResponse rx2 = ZBRxResponse();
 // format magic bytes, status, id1, id2
 uint8_t xbeeTxPayload[] = { MAGIC_BYTE1, MAGIC_BYTE2, 0, 0, 0 };
 
-// Coordinator/XMPP Gateway
+// TODO use ifdef to either include series 1 or 2 but not both
+
+// Coordinator Gateway
 XBeeAddress64 addr64 = XBeeAddress64(COORD_MSB_ADDRESS, COORD_LSB_ADDRESS);
 // series 1
 Tx64Request tx1 = Tx64Request(addr64, xbeeTxPayload, sizeof(xbeeTxPayload));
@@ -71,7 +74,7 @@ ZBTxStatusResponse txStatus2 = ZBTxStatusResponse();
 
 //Since Arduino 1.0 we have the superior softserial implementation: NewSoftSerial
 // Remember to connect all devices to a common Ground: XBee, Arduino and USB-Serial device
-SoftwareSerial nss(XBEE_SOFTSERIAL_TX_PIN, XBEE_SOFTSERIAL_RX_PIN);
+SoftwareSerial nss(XBEE_SOFTSERIAL_TX_PIN, XBEE_SOFTSERIAL_RX_PIN); // RX, TX
 
 RemoteUploader remoteUploader = RemoteUploader();
 
@@ -85,12 +88,13 @@ Stream* getXBeeSerial() {
 }
 
 void setup() {
-  // for Leonardo use &Serial1
   // for atmega328/168 use &Serial
-  remoteUploader.setup(&Serial, &eeprom, RESET_PIN);
+  // do not set baud rate as the uploader does this
+  remoteUploader.setup(&Serial, &eeprom, RESET_PIN);  
+  // for Leonardo must use Serial1
+  //remoteUploader.setup(&Serial1, &eeprom, RESET_PIN);
   //configure debug if an additional Serial port is available. Use Serial with Leonardo
   // for some reason I can only program with a Leonardo when the serial console is open, even if I'm not using debug!
-  //Serial.begin(9600);    
   //remoteUploader.setDebugSerial(&Serial);
 
   // TODO if setup_success != OK send error programming attempt
@@ -99,14 +103,8 @@ void setup() {
   nss.begin(XBEE_BAUD_RATE);  
   xbee.setSerial(nss);
   
-  if (PROXY_SERIAL) {
-    remoteUploader.getProgrammerSerial()->begin(XBEE_BAUD_RATE);    
-  } 
-  
   #if (USBDEBUG || NSSDEBUG) 
-    if (setup == 0) {
-      getDebugSerial()->println("Ready");
-    }
+    remoteUploader.getDebugSerial()->println("Ready");
   #endif
 }
 
@@ -134,6 +132,8 @@ int sendReply(uint8_t status, uint16_t id) {
   if (series == SERIES1) {
     xbee.send(tx1);        
   } else if (series == SERIES2) {
+    // send reply to sender xbee
+    tx2.setAddress64(rx2.getRemoteAddress64());
     xbee.send(tx2);    
   }
   
@@ -149,7 +149,7 @@ int sendReply(uint8_t status, uint16_t id) {
         return 0;
       } else {
         #if (USBDEBUG || NSSDEBUG) 
-          getDebugSerial()->println("TX fail");
+          remoteUploader.getDebugSerial()->println("TX fail");
         #endif  
       }
     } else if (xbee.getResponse().getApiId() == TX_STATUS_RESPONSE) {
@@ -160,19 +160,19 @@ int sendReply(uint8_t status, uint16_t id) {
         return 0;
       } else {
         #if (USBDEBUG || NSSDEBUG) 
-          getDebugSerial()->println("TX fail");
+          remoteUploader.getDebugSerial()->println("TX fail");
         #endif      
       }  
     }   
   } else if (xbee.getResponse().isError()) {
     #if (USBDEBUG || NSSDEBUG)
       // starting to see lots of these. check wire connections are secure
-      getDebugSerial()->print("TX error:");  
-      getDebugSerial()->print(xbee.getResponse().getErrorCode());
+      remoteUploader.getDebugSerial()->print("TX error:");  
+      remoteUploader.getDebugSerial()->print(xbee.getResponse().getErrorCode());
     #endif
   } else {
     #if (USBDEBUG || NSSDEBUG) 
-      getDebugSerial()->println("TX timeout");
+      remoteUploader.getDebugSerial()->println("TX timeout");
     #endif  
   } 
   
@@ -197,7 +197,7 @@ void forwardPacket() {
   // prob cleaner way to do this if I think about it some more
   
   #if (USBDEBUG || NSSDEBUG) 
-    getDebugSerial()->println("Forwarding packet");    
+    remoteUploader.getDebugSerial()->println("Forwarding packet");    
   #endif
         
   // send start byte, length, api, then frame data + checksum
@@ -217,13 +217,13 @@ void forwardPacket() {
 
 // TODO ack needs to send the id (packet #) otherwise we may be getting a different ack, right?
 
-void loop() {  
+void loop() {        
   xbee.readPacket();
   
   if (xbee.getResponse().isAvailable()) {  
     // if not programming packet, relay exact bytes to the arduino. need to figure out how to get from library
     // NOTE the target sketch should ignore any programming packets it receives as that is an indication of a failed programming attempt
-    
+          
       uint8_t *packet = NULL;
       uint8_t length;
       
