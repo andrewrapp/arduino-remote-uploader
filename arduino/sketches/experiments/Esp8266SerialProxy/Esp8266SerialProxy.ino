@@ -1,7 +1,7 @@
 #include <SoftwareSerial.h>
 
-#define ESP_RX 6
-#define ESP_TX 5
+#define ESP_RX 10
+#define ESP_TX 8
 
 SoftwareSerial espSerial(ESP_RX, ESP_TX);
 
