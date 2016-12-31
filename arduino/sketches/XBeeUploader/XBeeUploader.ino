@@ -27,7 +27,7 @@
 
 // NOTE: Leonardo seems to have no problem powering the xbee ~50ma and and a Diecimila
 
-// Set to true to forward serial (xbee traffic) to other Arduino
+// If the xbee is only used for firmware updates and the app arduino doesn't use it this can be false
 #define PROXY_SERIAL true
 #define XBEE_BAUD_RATE 9600
 #define USBDEBUG false
