@@ -250,7 +250,8 @@ public class XBeeSketchUploader extends SketchUploader {
 	
 	/**
 	 * ex
-./xbee-uploader.sh --sketch /Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkSlow.cpp.hex --serial-port /dev/tty.usbserial-A6005uRz --baud-rate 9600 --radio-type SERIES2 --remote-xbee-address "0013A200408B98FF" --arduino-timeout-s 0 --ack-timeout-ms 5000 --retries
+./xbee-uploader.sh --sketch /Users/andrew/Documents/dev/arduino-remote-uploader/resources/BlinkFast-atmega-328-16Mhz.cpp.hex --serial-port /dev/tty.usbserial-A6005uRz --baud-rate 9600 --radio-type SERIES2 --remote-xbee-address "0013A200408B98FF" --arduino-timeout-s 0 --ack-timeout-ms 5000 --retries 50
+
 Experimental:  JNI_OnLoad called.
 Stable Library
 =========================================
