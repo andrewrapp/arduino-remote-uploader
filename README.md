@@ -2,7 +2,7 @@
 
 The goal of this project is provide over-the-air (OTA) upload of Arduino sketches to a remote Arduino. There is support for XBee (Series 1 and 2), Wifi (ESP8266), and Nordic nRF24L01+. This is accomplished by programming one Arduino with another. The circuit is conceptually very simple:
 
-<img src="https://raw.githubusercontent.com/andrewrapp/arduino-remote-uploader/master/resources/prototype-wiring_bb.png" alt="vine" width="300" height="299" border="0" />
+<img src="https://raw.githubusercontent.com/andrewrapp/arduino-remote-uploader/master/resources/prototype-wiring-xbee_bb.png" alt="xbee prototype" border="0" />
 
 One Arduino receives firmware packets from a wireless device (XBee in this case) and writes to EEPROM. Then, once it receives the entire sketch it flashes the firmware on the other Arduino. There are other tricks for remote firmware programming but nearly all involve unfortunate tradeoffs. This solution is fault tolerant, in that it checksums every firmware page (packet), acks and retries dropped packets and only flashes when a complete firmware image has been written to EEPROM. You can unplug the remote during programming, then plug back in and it will resume and flash successfully.
 
