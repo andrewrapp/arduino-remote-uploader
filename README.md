@@ -10,7 +10,7 @@ It's also quite cost-effective: the Microchip EEPROM costs $1. Arduino Pros can 
 
 The client is a simple command-line app:
 
-TODO
+<video src="https://github.com/andrewrapp/arduino-remote-uploader/blob/master/resources/remote-flash-screen-recording.mov?raw=true" controls autoplay></video>
 
 I've written about the project in detail on Medium https://medium.com/@nowir3s/arduino-remote-uploader-aa61e4d620b1
 
