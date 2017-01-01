@@ -102,7 +102,13 @@ void setup() {
   
   nss.begin(XBEE_BAUD_RATE);  
   xbee.setSerial(nss);
-  
+
+  // Start the serial port for the xbee baud rate when proxying
+  if (PROXY_SERIAL) {
+    // we flashed so reset to xbee baud rate for proxying
+    remoteUploader.getProgrammerSerial()->begin(XBEE_BAUD_RATE);              
+  }
+            
   #if (USBDEBUG || NSSDEBUG) 
     remoteUploader.getDebugSerial()->println("Ready");
   #endif
