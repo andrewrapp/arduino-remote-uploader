@@ -232,6 +232,7 @@ void loop() {
           
       uint8_t *packet = NULL;
       uint8_t length;
+      bool progPacket = false;
       
       if (xbee.getResponse().getApiId() == ZB_RX_RESPONSE) {  
         // series 2    
@@ -256,6 +257,8 @@ void loop() {
 
       if (packet != NULL) {
         if (length > 4 && remoteUploader.isProgrammingPacket(packet, length)) {
+          progPacket = true;
+          
           // send the packet array, length to be processed
           int response = remoteUploader.process(packet);
               
@@ -272,12 +275,12 @@ void loop() {
               remoteUploader.getProgrammerSerial()->begin(XBEE_BAUD_RATE);              
             }
           }          
-        } else {
-          // not a programming packet. forward along
-          if (PROXY_SERIAL) {
-            forwardPacket();                  
-          }          
-        }      
+        }     
+      }
+      
+      if (!progPacket && PROXY_SERIAL) {
+        // not a programming packet. forward along
+        forwardPacket();                           
       }
   } else if (xbee.getResponse().isError()) {
     #if (USBDEBUG || NSSDEBUG) 
