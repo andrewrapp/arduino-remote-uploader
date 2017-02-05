@@ -8,7 +8,7 @@ One Arduino receives firmware packets from a wireless device (XBee in this case)
 
 It's also quite cost-effective: the Microchip EEPROM costs $1. Arduino Pros can be found online for about $3 each. Nordic radios can be found for about $1 online.
 
-Here's a prototype I built to control my garage door. A Modern Device RBBB performs the programming while the app runs on the Arduino Pro. I'm using an Arduino XBee shield just for the XBee socket and 3.3V conversion. 
+Here's a prototype I built to control my garage door. A Modern Device RBBB performs the programming while the app runs on a Arduino Pro. I'm using an Arduino XBee shield just for the XBee socket and 3.3V conversion. 
 
 <img src="https://github.com/andrewrapp/arduino-remote-uploader/blob/master/resources/garage-door-prototype.jpeg?raw=true"/>
 
